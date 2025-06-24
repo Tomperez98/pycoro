@@ -45,7 +45,7 @@ class Scheduler[T]:
         self._in = Queue[tuple[InProcessComputation, Future]](size)
 
         self._running: deque[InProcessComputation | tuple[InProcessComputation, Future]] = deque()
-        self._awaiting: dict[InProcessComputation, InProcessComputation] = {}
+        self._awaiting: dict[InProcessComputation, InProcessComputation | None] = {}
 
         self._p_to_comp: dict[Promise, InProcessComputation] = {}
         self._comp_to_f: dict[InProcessComputation, Future] = {}
@@ -94,55 +94,63 @@ class Scheduler[T]:
             return False
 
         assert computation.final is None
-        assert isinstance(computation.coro, Generator)
+        match computation.coro:
+            case Generator():
+                yielded: Yieldable | FinalValue[T]
+                try:
+                    match computation.next:
+                        case Exception():
+                            yielded = computation.coro.throw(computation.next)
+                        case _:
+                            yielded = computation.coro.send(computation.next)
+                except StopIteration as e:
+                    yielded = FinalValue(e.value)
 
-        yielded: Yieldable | FinalValue[T]
-        try:
-            match computation.next:
-                case Exception():
-                    yielded = computation.coro.throw(computation.next)
-                case _:
-                    yielded = computation.coro.send(computation.next)
-        except StopIteration as e:
-            yielded = FinalValue(e.value)
+                match yielded:
+                    case Promise():
+                        child_computation = self._p_to_comp.pop(yielded)
 
-        match yielded:
-            case Promise():
-                child_computation = self._p_to_comp.pop(yielded)
+                        match child_computation.final:
+                            case None:
+                                self._awaiting[child_computation] = computation
+                            case FinalValue(v=v):
+                                computation.next = v
+                                self._running.appendleft(computation)
 
-                match child_computation.final:
-                    case None:
-                        self._awaiting[child_computation] = computation
-                    case FinalValue(v=v):
-                        computation.next = v
+                    case FinalValue():
+                        self._set_final_value(computation, yielded)
+
+                    case Generator():
+                        child_computation = InProcessComputation(yielded, None, None)
+                        promise = Promise()
+                        self._p_to_comp[promise] = child_computation
+
+                        self._running.appendleft(child_computation)
+
+                        computation.next = promise
                         self._running.appendleft(computation)
 
-            case FinalValue():
-                self._set_final_value(computation, yielded)
+                    case Callable():
+                        child_computation = InProcessComputation(yielded, None, None)
+                        promise = Promise()
+                        self._p_to_comp[promise] = child_computation
 
-            case Generator():
-                child_computation = InProcessComputation(yielded, None, None)
-                promise = Promise()
-                self._p_to_comp[promise] = child_computation
+                        def _(computation: InProcessComputation[Any], r: Any | Exception) -> None:
+                            assert computation.next is None
+                            self._set_final_value(computation, FinalValue(r))
 
-                self._running.appendleft(child_computation)
+                        self._io.dispatch(yielded, lambda r, comp=child_computation: _(comp, r))
 
-                computation.next = promise
-                self._running.appendleft(computation)
-
+                        computation.next = promise
+                        self._running.appendleft(computation)
             case Callable():
-                child_computation = InProcessComputation(yielded, None, None)
-                promise = Promise()
-                self._p_to_comp[promise] = child_computation
 
                 def _(computation: InProcessComputation[Any], r: Any | Exception) -> None:
                     assert computation.next is None
                     self._set_final_value(computation, FinalValue(r))
 
-                self._io.dispatch(yielded, lambda r, comp=child_computation: _(comp, r))
-
-                computation.next = promise
-                self._running.appendleft(computation)
+                self._io.dispatch(computation.coro, lambda r, comp=computation: _(comp, r))
+                self._awaiting[computation] = None
 
         return True
 
@@ -151,9 +159,9 @@ class Scheduler[T]:
             if blocking.final is None:
                 continue
             blocked = self._awaiting.pop(blocking)
-
-            blocked.next = blocking.final.v
-            self._running.appendleft(blocked)
+            if blocked is not None:
+                blocked.next = blocking.final.v
+                self._running.appendleft(blocked)
 
     def size(self) -> int:
         return len(self._running) + len(self._awaiting) + self._in.qsize()

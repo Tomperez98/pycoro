@@ -29,6 +29,7 @@ def main() -> None:
 
     s = Scheduler(io, 100)
     h = s.add(coroutine(50))
+    # h = s.add(lambda: "hi")
     while s.size() > 0:
         cqes = io.dequeue(100)
         for cqe in cqes:
