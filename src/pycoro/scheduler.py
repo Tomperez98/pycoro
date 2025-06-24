@@ -5,20 +5,25 @@ from queue import Empty, Queue
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from pycoro import Coroutine
+    from pycoro import Computation, Yieldable
     from pycoro.io import IO
 
 
-class InProcessCoroutine[T]:
+class FinalValue[T]:
+    def __init__(self, v: T | Exception) -> None:
+        self.v = v
+
+
+class InProcessComputation[T]:
     def __init__(
         self,
-        coro: Coroutine[T],
-        result: T | Exception | None,
-        next_value: Any | Exception | Promise | None,
+        coro: Computation[T],
+        next: Any | Exception | Promise | None,
+        final: FinalValue[T] | None,
     ) -> None:
         self.coro = coro
-        self.result = result
-        self.next_value = next_value
+        self.next = next
+        self.final = final
 
 
 class Promise: ...
@@ -27,14 +32,15 @@ class Promise: ...
 class Scheduler[T]:
     def __init__(self, io: IO[T], size: int) -> None:
         self._io = io
-        self._in = Queue[InProcessCoroutine](size)
+        self._in = Queue[InProcessComputation](size)
 
-        self._running: list[InProcessCoroutine] = []
-        self._awaiting: dict[InProcessCoroutine, InProcessCoroutine] = {}
-        self._promise_to_coro: dict[Promise, InProcessCoroutine] = {}
+        self._running: list[InProcessComputation] = []
+        self._awaiting: dict[InProcessComputation, InProcessComputation] = {}
 
-    def add(self, c: Coroutine[T]) -> None:
-        self._in.put_nowait(InProcessCoroutine(c, None, None))
+        self._promise_to_computation: dict[Promise, InProcessComputation] = {}
+
+    def add(self, c: Computation[T]) -> None:
+        self._in.put_nowait(InProcessComputation(c, None, None))
 
     def shutdown(self) -> None:
         self._in.shutdown()
@@ -50,47 +56,83 @@ class Scheduler[T]:
             lambda c: self._running.append(c),
         )
 
-        assert len(self._running) == size
-
-        while len(self._running) > 0:
-            self.step()
+        self.tick()
 
         assert len(self._running) == 0
 
+    def tick(self) -> None:
+        self._unblock()
+
+        while self.step():
+            continue
+
     def step(self) -> bool:
         try:
-            coro = self._running.pop()
+            computation = self._running.pop()
         except IndexError:
             return False
 
-        child = _send_next_value(coro)
+        assert computation.final is None
+        assert isinstance(computation.coro, Generator)
 
-        match child:
+        yielded: Yieldable | FinalValue[T]
+        try:
+            match computation.next:
+                case Exception():
+                    yielded = computation.coro.throw(computation.next)
+                case _:
+                    yielded = computation.coro.send(computation.next)
+        except StopIteration as e:
+            yielded = FinalValue(e.value)
+
+        match yielded:
             case Promise():
-                raise NotImplementedError
+                child_computation = self._promise_to_computation.pop(yielded)
+
+                match child_computation.final:
+                    case None:
+                        self._awaiting[child_computation] = computation
+                    case FinalValue(v=v):
+                        computation.next = v
+                        self._running.append(computation)
+
+            case FinalValue():
+                assert computation.final is None
+                computation.final = yielded
 
             case Generator():
-                self._running.append(InProcessCoroutine(child, None, None))
+                child_computation = InProcessComputation(yielded, None, None)
+                promise = Promise()
+                self._promise_to_computation[promise] = child_computation
 
-                coro.next_value = Promise()
-                self._running.append(coro)
-                self._promise_to_coro[coro.next_value] = coro
-                return True
+                self._running.append(child_computation)
 
+                computation.next = promise
+                self._running.append(computation)
             case Callable():
+                child_computation = InProcessComputation(yielded, None, None)
+                promise = Promise()
+                self._promise_to_computation[promise] = child_computation
 
-                def _(r: Any | Exception) -> None:
-                    assert coro.result is None
-                    coro.result = r
+                def _(computation: InProcessComputation[Any], r: Any | Exception) -> None:
+                    assert computation.next is None
+                    assert computation.final is None
+                    computation.final = FinalValue(r)
 
-                self._io.dispatch(child, _)
+                self._io.dispatch(yielded, lambda r, comp=child_computation: _(comp, r))
 
-                coro.next_value = Promise()
-                self._running.append(coro)
-                self._promise_to_coro[coro.next_value] = coro
-                return True
-            case None:
-                return False
+                computation.next = promise
+                self._running.append(computation)
+        return True
+
+    def _unblock(self) -> None:
+        for blocking in list(self._awaiting):
+            if blocking.final is None:
+                continue
+            blocked = self._awaiting.pop(blocking)
+
+            blocked.next = blocking.final.v
+            self._running.append(blocked)
 
     def size(self) -> int:
         return len(self._running) + len(self._awaiting) + self._in.qsize()
@@ -103,20 +145,3 @@ def batch[T](queue: Queue[T], n: int, f: Callable[[T], None]) -> None:
         except Empty:
             return
         f(e)
-
-
-def _send_next_value[T](coro: InProcessCoroutine[T]) -> Callable[[], Any] | Coroutine[Any] | Promise | None:
-    assert coro.result is None
-
-    try:
-        match coro.next_value:
-            case Exception():
-                child = coro.coro.throw(coro.next_value)
-            case _:
-                child = coro.coro.send(coro.next_value)
-
-        coro.next_value = None
-    except StopIteration as e:
-        raise NotImplementedError from e
-    else:
-        return child

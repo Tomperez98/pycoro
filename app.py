@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Generator
-from typing import Any
+from typing import TYPE_CHECKING
 
 from pycoro.io.fio import FIO
 from pycoro.scheduler import Scheduler
 
-type Coroutine[T] = Generator[Callable[[], Any] | Coroutine[Any], Any, T]
+if TYPE_CHECKING:
+    from pycoro import Computation
 
 
-def coroutine(n: int) -> Coroutine[str]:
+def coroutine(n: int) -> Computation[str]:
     if n == 0:
-        return ""
+        return "I finished"
 
     foo_promise = yield (lambda: f"foo.{n}")
     bar_promise = yield (lambda: f"bar.{n}")
@@ -28,7 +28,7 @@ def main() -> None:
     io.worker()
 
     s = Scheduler(io, 100)
-    s.add(coroutine(3))
+    s.add(coroutine(5))
     while s.size() > 0:
         cqes = io.dequeue(100)
         for cqe in cqes:

@@ -5,4 +5,5 @@ from typing import Any
 
 from pycoro.scheduler import Promise
 
-type Coroutine[T] = Generator[Callable[[], Any] | Coroutine[Any] | Promise, Any, T]
+type Yieldable = Computation[Any] | Promise
+type Computation[T] = Generator[Yieldable, Any, T] | Callable[[], T]
