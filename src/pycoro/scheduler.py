@@ -36,7 +36,7 @@ class InProcessComputation[T]:
         self.final = final
 
 
-class Promise: ...
+class Promise[T]: ...
 
 
 class Scheduler[T]:
@@ -184,3 +184,4 @@ def batch[T](queue: Queue[T], n: int, f: Callable[[T], None]) -> None:
         except Empty:
             return
         f(e)
+        queue.task_done()
