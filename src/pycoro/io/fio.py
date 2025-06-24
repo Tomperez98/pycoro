@@ -23,8 +23,8 @@ class CQE[T]:
 
 class FIO[T]:
     def __init__(self, size: int) -> None:
-        self._sq = Queue[SQE[T]](maxsize=size)
-        self._cq = Queue[CQE[T]](maxsize=size)
+        self._sq = Queue[SQE[T]](size)
+        self._cq = Queue[CQE[T]](size)
         self._workers: list[Thread] = []
 
     def dispatch(self, value: Callable[[], T], callback: Callable[[T | Exception], None]) -> None:

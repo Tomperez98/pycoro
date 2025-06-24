@@ -2,12 +2,21 @@ from __future__ import annotations
 
 from collections import deque
 from collections.abc import Callable, Generator
+from concurrent.futures import Future
 from queue import Empty, Queue
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from pycoro import Computation, Yieldable
     from pycoro.io import IO
+
+
+class Handle[T]:
+    def __init__(self, f: Future[T]) -> None:
+        self._f = f
+
+    def result(self, timeout: float | None = None) -> T:
+        return self._f.result(timeout)
 
 
 class FinalValue[T]:
@@ -33,15 +42,18 @@ class Promise: ...
 class Scheduler[T]:
     def __init__(self, io: IO[T], size: int) -> None:
         self._io = io
-        self._in = Queue[InProcessComputation](size)
+        self._in = Queue[tuple[InProcessComputation, Future]](size)
 
-        self._running: deque[InProcessComputation] = deque()
+        self._running: deque[InProcessComputation | tuple[InProcessComputation, Future]] = deque()
         self._awaiting: dict[InProcessComputation, InProcessComputation] = {}
 
         self._p_to_comp: dict[Promise, InProcessComputation] = {}
+        self._comp_to_f: dict[InProcessComputation, Future] = {}
 
-    def add(self, c: Computation[T]) -> None:
-        self._in.put_nowait(InProcessComputation(c, None, None))
+    def add(self, c: Computation[T]) -> Handle[T]:
+        f = Future[T]()
+        self._in.put_nowait((InProcessComputation(c, None, None), f))
+        return Handle(f)
 
     def shutdown(self) -> None:
         self._in.shutdown()
@@ -69,7 +81,15 @@ class Scheduler[T]:
 
     def step(self) -> bool:
         try:
-            computation = self._running.pop()
+            match item := self._running.pop():
+                case InProcessComputation():
+                    computation = item
+                case _:
+                    computation, future = item
+                    assert computation.next is None
+                    assert computation.final is None
+
+                    self._comp_to_f[computation] = future
         except IndexError:
             return False
 
@@ -98,8 +118,7 @@ class Scheduler[T]:
                         self._running.appendleft(computation)
 
             case FinalValue():
-                assert computation.final is None
-                computation.final = yielded
+                self._set_final_value(computation, yielded)
 
             case Generator():
                 child_computation = InProcessComputation(yielded, None, None)
@@ -110,6 +129,7 @@ class Scheduler[T]:
 
                 computation.next = promise
                 self._running.appendleft(computation)
+
             case Callable():
                 child_computation = InProcessComputation(yielded, None, None)
                 promise = Promise()
@@ -117,13 +137,13 @@ class Scheduler[T]:
 
                 def _(computation: InProcessComputation[Any], r: Any | Exception) -> None:
                     assert computation.next is None
-                    assert computation.final is None
-                    computation.final = FinalValue(r)
+                    self._set_final_value(computation, FinalValue(r))
 
                 self._io.dispatch(yielded, lambda r, comp=child_computation: _(comp, r))
 
                 computation.next = promise
                 self._running.appendleft(computation)
+
         return True
 
     def _unblock(self) -> None:
@@ -137,6 +157,16 @@ class Scheduler[T]:
 
     def size(self) -> int:
         return len(self._running) + len(self._awaiting) + self._in.qsize()
+
+    def _set_final_value(self, computation: InProcessComputation[T], final_value: FinalValue[T]) -> None:
+        assert computation.final is None
+        computation.final = final_value
+        if (f := self._comp_to_f.pop(computation, None)) is not None:
+            match computation.final.v:
+                case Exception():
+                    f.set_exception(computation.final.v)
+                case _:
+                    f.set_result(computation.final.v)
 
 
 def batch[T](queue: Queue[T], n: int, f: Callable[[T], None]) -> None:

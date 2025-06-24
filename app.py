@@ -28,13 +28,15 @@ def main() -> None:
     io.worker()
 
     s = Scheduler(io, 100)
-    s.add(coroutine(5))
+    h = s.add(coroutine(50))
     while s.size() > 0:
         cqes = io.dequeue(100)
         for cqe in cqes:
             cqe.callback(cqe.value)
 
         s.run_until_blocked()
+
+    h.result()
 
 
 main()
