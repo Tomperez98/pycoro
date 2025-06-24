@@ -34,7 +34,7 @@ def main() -> None:
         for cqe in cqes:
             cqe.callback(cqe.value)
 
-        s.run_until_blocked()
+        s.run_until_blocked(0)
 
     print(h.result())  # noqa: T201
 
@@ -44,7 +44,7 @@ def main() -> None:
         for cqe in cqes:
             cqe.callback(cqe.value)
 
-        s.run_until_blocked()
+        s.run_until_blocked(0)
 
     print(h.result())  # noqa: T201
 

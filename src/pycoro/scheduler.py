@@ -42,13 +42,13 @@ class Promise[T]: ...
 class Scheduler[T]:
     def __init__(self, io: IO[T], size: int) -> None:
         self._io = io
-        self._in = Queue[tuple[InProcessComputation, Future]](size)
+        self._in = Queue[tuple[InProcessComputation[T], Future[T]]](size)
 
-        self._running: deque[InProcessComputation | tuple[InProcessComputation, Future]] = deque()
-        self._awaiting: dict[InProcessComputation, InProcessComputation | None] = {}
+        self._running: deque[InProcessComputation[T] | tuple[InProcessComputation[T], Future[T]]] = deque()
+        self._awaiting: dict[InProcessComputation[T], InProcessComputation[T] | None] = {}
 
-        self._p_to_comp: dict[Promise, InProcessComputation] = {}
-        self._comp_to_f: dict[InProcessComputation, Future] = {}
+        self._p_to_comp: dict[Promise[T], InProcessComputation[T]] = {}
+        self._comp_to_f: dict[InProcessComputation[T], Future[T]] = {}
 
     def add(self, c: Computation[T]) -> Handle[T]:
         f = Future[T]()
@@ -58,8 +58,12 @@ class Scheduler[T]:
     def shutdown(self) -> None:
         self._in.shutdown()
         self._in.join()
+        assert len(self._running) == 0
+        assert len(self._awaiting) == 0
+        assert len(self._p_to_comp) == 0
+        assert len(self._comp_to_f) == 0
 
-    def run_until_blocked(self) -> None:
+    def run_until_blocked(self, time: int) -> None:
         assert len(self._running) == 0
 
         size = self._in.qsize()
@@ -69,17 +73,17 @@ class Scheduler[T]:
             lambda c: self._running.appendleft(c),
         )
 
-        self.tick()
+        self.tick(time)
 
         assert len(self._running) == 0
 
-    def tick(self) -> None:
+    def tick(self, time: int) -> None:
         self._unblock()
 
-        while self.step():
+        while self.step(time):
             continue
 
-    def step(self) -> bool:
+    def step(self, time: int) -> bool:
         try:
             match item := self._running.pop():
                 case InProcessComputation():
