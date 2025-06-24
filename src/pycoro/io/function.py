@@ -21,7 +21,7 @@ class CQE[T]:
     callback: Callable[[T | Exception], None]
 
 
-class FIO[T]:
+class FunctionIO[T]:
     def __init__(self, size: int) -> None:
         self._sq = Queue[SQE[T]](size)
         self._cq = Queue[CQE[T]](size)
@@ -29,9 +29,6 @@ class FIO[T]:
 
     def dispatch(self, value: Callable[[], T], callback: Callable[[T | Exception], None]) -> None:
         self._sq.put_nowait(SQE(value, callback))
-
-    def enqueue(self, cqe: CQE[T]) -> None:
-        self._cq.put_nowait(cqe)
 
     def dequeue(self, n: int) -> list[CQE[T]]:
         cqes: list[CQE[T]] = []

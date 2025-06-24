@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from pycoro import Scheduler, typesafe
-from pycoro.io.fio import FIO
+from pycoro.io.function import FunctionIO
 
 if TYPE_CHECKING:
     from pycoro import Computation
@@ -24,7 +24,7 @@ def coroutine(n: int) -> Computation[str]:
 
 
 def test_function_invocation() -> None:
-    io = FIO[str](100)
+    io = FunctionIO[str](100)
     io.worker()
 
     s = Scheduler(io, 100)
@@ -40,11 +40,10 @@ def test_function_invocation() -> None:
     assert h.result() == "hi!"
 
     s.shutdown()
-    io.shutdown()
 
 
 def test_coroutine_invocation() -> None:
-    io = FIO[str](100)
+    io = FunctionIO[str](100)
     io.worker()
 
     s = Scheduler(io, 100)
@@ -58,3 +57,5 @@ def test_coroutine_invocation() -> None:
 
     assert h.result().startswith("foo.3")
     assert h.result().endswith("finished")
+
+    s.shutdown()

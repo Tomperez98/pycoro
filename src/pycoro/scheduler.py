@@ -62,6 +62,7 @@ class Scheduler[T]:
         assert len(self._awaiting) == 0
         assert len(self._p_to_comp) == 0
         assert len(self._comp_to_f) == 0
+        self._io.shutdown()
 
     def run_until_blocked(self, time: int) -> None:
         assert len(self._running) == 0

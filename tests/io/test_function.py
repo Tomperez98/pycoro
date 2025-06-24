@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pycoro.io.fio import FIO
+from pycoro.io.function import FunctionIO
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -21,7 +21,7 @@ def callback_that_asserts(expected: str) -> Callable[[str | Exception], None]:
 
 
 def test_fio() -> None:
-    fio = FIO[str](100)
+    fio = FunctionIO[str](100)
     fio.worker()
     fio.worker()
     fio.worker()
