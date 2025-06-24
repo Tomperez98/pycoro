@@ -37,6 +37,17 @@ def main() -> None:
         s.run_until_blocked()
 
     print(h.result())  # noqa: T201
+
+    h = s.add(lambda: "hi!")
+    while s.size() > 0:
+        cqes = io.dequeue(100)
+        for cqe in cqes:
+            cqe.callback(cqe.value)
+
+        s.run_until_blocked()
+
+    print(h.result())  # noqa: T201
+
     s.shutdown()
     io.shutdown()
 
