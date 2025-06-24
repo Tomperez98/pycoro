@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable, Generator
 from queue import Empty, Queue
 from typing import TYPE_CHECKING, Any
@@ -34,10 +35,10 @@ class Scheduler[T]:
         self._io = io
         self._in = Queue[InProcessComputation](size)
 
-        self._running: list[InProcessComputation] = []
+        self._running: deque[InProcessComputation] = deque()
         self._awaiting: dict[InProcessComputation, InProcessComputation] = {}
 
-        self._promise_to_computation: dict[Promise, InProcessComputation] = {}
+        self._p_to_comp: dict[Promise, InProcessComputation] = {}
 
     def add(self, c: Computation[T]) -> None:
         self._in.put_nowait(InProcessComputation(c, None, None))
@@ -53,7 +54,7 @@ class Scheduler[T]:
         batch(
             self._in,
             size,
-            lambda c: self._running.append(c),
+            lambda c: self._running.appendleft(c),
         )
 
         self.tick()
@@ -87,14 +88,14 @@ class Scheduler[T]:
 
         match yielded:
             case Promise():
-                child_computation = self._promise_to_computation.pop(yielded)
+                child_computation = self._p_to_comp.pop(yielded)
 
                 match child_computation.final:
                     case None:
                         self._awaiting[child_computation] = computation
                     case FinalValue(v=v):
                         computation.next = v
-                        self._running.append(computation)
+                        self._running.appendleft(computation)
 
             case FinalValue():
                 assert computation.final is None
@@ -103,16 +104,16 @@ class Scheduler[T]:
             case Generator():
                 child_computation = InProcessComputation(yielded, None, None)
                 promise = Promise()
-                self._promise_to_computation[promise] = child_computation
+                self._p_to_comp[promise] = child_computation
 
-                self._running.append(child_computation)
+                self._running.appendleft(child_computation)
 
                 computation.next = promise
-                self._running.append(computation)
+                self._running.appendleft(computation)
             case Callable():
                 child_computation = InProcessComputation(yielded, None, None)
                 promise = Promise()
-                self._promise_to_computation[promise] = child_computation
+                self._p_to_comp[promise] = child_computation
 
                 def _(computation: InProcessComputation[Any], r: Any | Exception) -> None:
                     assert computation.next is None
@@ -122,7 +123,7 @@ class Scheduler[T]:
                 self._io.dispatch(yielded, lambda r, comp=child_computation: _(comp, r))
 
                 computation.next = promise
-                self._running.append(computation)
+                self._running.appendleft(computation)
         return True
 
     def _unblock(self) -> None:
@@ -132,7 +133,7 @@ class Scheduler[T]:
             blocked = self._awaiting.pop(blocking)
 
             blocked.next = blocking.final.v
-            self._running.append(blocked)
+            self._running.appendleft(blocked)
 
     def size(self) -> int:
         return len(self._running) + len(self._awaiting) + self._in.qsize()
