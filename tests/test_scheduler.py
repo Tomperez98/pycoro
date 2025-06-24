@@ -23,7 +23,27 @@ def coroutine(n: int) -> Computation[str]:
     return f"{foo}.{bar}.{baz}"
 
 
-def main() -> None:
+def test_function_invocation() -> None:
+    io = FIO[str](100)
+    io.worker()
+
+    s = Scheduler(io, 100)
+
+    h = s.add(lambda: "hi!")
+    while s.size() > 0:
+        cqes = io.dequeue(100)
+        for cqe in cqes:
+            cqe.callback(cqe.value)
+
+        s.run_until_blocked(0)
+
+    assert h.result() == "hi!"
+
+    s.shutdown()
+    io.shutdown()
+
+
+def test_coroutine_invocation() -> None:
     io = FIO[str](100)
     io.worker()
 
@@ -36,20 +56,5 @@ def main() -> None:
 
         s.run_until_blocked(0)
 
-    print(h.result())  # noqa: T201
-
-    h = s.add(lambda: "hi!")
-    while s.size() > 0:
-        cqes = io.dequeue(100)
-        for cqe in cqes:
-            cqe.callback(cqe.value)
-
-        s.run_until_blocked(0)
-
-    print(h.result())  # noqa: T201
-
-    s.shutdown()
-    io.shutdown()
-
-
-main()
+    assert h.result().startswith("foo.3")
+    assert h.result().endswith("finished")

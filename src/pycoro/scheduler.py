@@ -19,40 +19,40 @@ class Handle[T]:
         return self._f.result(timeout)
 
 
-class FinalValue[T]:
+class FV[T]:
     def __init__(self, v: T | Exception) -> None:
         self.v = v
 
 
-class InProcessComputation[T]:
+class IPC[T]:
     def __init__(
         self,
         coro: Computation[T],
-        next: Any | Exception | Promise | None,
-        final: FinalValue[T] | None,
+        next: Any | Exception | P | None,
+        final: FV[T] | None,
     ) -> None:
         self.coro = coro
         self.next = next
         self.final = final
 
 
-class Promise[T]: ...
+class P[T]: ...
 
 
 class Scheduler[T]:
     def __init__(self, io: IO[T], size: int) -> None:
         self._io = io
-        self._in = Queue[tuple[InProcessComputation[T], Future[T]]](size)
+        self._in = Queue[tuple[IPC[T], Future[T]]](size)
 
-        self._running: deque[InProcessComputation[T] | tuple[InProcessComputation[T], Future[T]]] = deque()
-        self._awaiting: dict[InProcessComputation[T], InProcessComputation[T] | None] = {}
+        self._running: deque[IPC[T] | tuple[IPC[T], Future[T]]] = deque()
+        self._awaiting: dict[IPC[T], IPC[T] | None] = {}
 
-        self._p_to_comp: dict[Promise[T], InProcessComputation[T]] = {}
-        self._comp_to_f: dict[InProcessComputation[T], Future[T]] = {}
+        self._p_to_comp: dict[P[T], IPC[T]] = {}
+        self._comp_to_f: dict[IPC[T], Future[T]] = {}
 
     def add(self, c: Computation[T]) -> Handle[T]:
         f = Future[T]()
-        self._in.put_nowait((InProcessComputation(c, None, None), f))
+        self._in.put_nowait((IPC(c, None, None), f))
         return Handle(f)
 
     def shutdown(self) -> None:
@@ -86,75 +86,75 @@ class Scheduler[T]:
     def step(self, time: int) -> bool:
         try:
             match item := self._running.pop():
-                case InProcessComputation():
-                    computation = item
+                case IPC():
+                    comp = item
                 case _:
-                    computation, future = item
-                    assert computation.next is None
-                    assert computation.final is None
+                    comp, future = item
+                    assert comp.next is None
+                    assert comp.final is None
 
-                    self._comp_to_f[computation] = future
+                    self._comp_to_f[comp] = future
         except IndexError:
             return False
 
-        assert computation.final is None
-        match computation.coro:
+        assert comp.final is None
+        match comp.coro:
             case Generator():
-                yielded: Yieldable | FinalValue[T]
+                yielded: Yieldable | FV[T]
                 try:
-                    match computation.next:
+                    match comp.next:
                         case Exception():
-                            yielded = computation.coro.throw(computation.next)
+                            yielded = comp.coro.throw(comp.next)
                         case _:
-                            yielded = computation.coro.send(computation.next)
+                            yielded = comp.coro.send(comp.next)
                 except StopIteration as e:
-                    yielded = FinalValue(e.value)
+                    yielded = FV(e.value)
 
                 match yielded:
-                    case Promise():
-                        child_computation = self._p_to_comp.pop(yielded)
+                    case P():
+                        child_comp = self._p_to_comp.pop(yielded)
 
-                        match child_computation.final:
+                        match child_comp.final:
                             case None:
-                                self._awaiting[child_computation] = computation
-                            case FinalValue(v=v):
-                                computation.next = v
-                                self._running.appendleft(computation)
+                                self._awaiting[child_comp] = comp
+                            case FV(v=v):
+                                comp.next = v
+                                self._running.appendleft(comp)
 
-                    case FinalValue():
-                        self._set_final_value(computation, yielded)
+                    case FV():
+                        self._set(comp, yielded)
 
                     case Generator():
-                        child_computation = InProcessComputation(yielded, None, None)
-                        promise = Promise()
-                        self._p_to_comp[promise] = child_computation
+                        child_comp = IPC(yielded, None, None)
+                        promise = P()
+                        self._p_to_comp[promise] = child_comp
 
-                        self._running.appendleft(child_computation)
+                        self._running.appendleft(child_comp)
 
-                        computation.next = promise
-                        self._running.appendleft(computation)
+                        comp.next = promise
+                        self._running.appendleft(comp)
 
                     case Callable():
-                        child_computation = InProcessComputation(yielded, None, None)
-                        promise = Promise()
-                        self._p_to_comp[promise] = child_computation
+                        child_comp = IPC(yielded, None, None)
+                        promise = P()
+                        self._p_to_comp[promise] = child_comp
 
-                        def _(computation: InProcessComputation[Any], r: Any | Exception) -> None:
-                            assert computation.next is None
-                            self._set_final_value(computation, FinalValue(r))
+                        def _(comp: IPC[Any], r: Any | Exception) -> None:
+                            assert comp.next is None
+                            self._set(comp, FV(r))
 
-                        self._io.dispatch(yielded, lambda r, comp=child_computation: _(comp, r))
+                        self._io.dispatch(yielded, lambda r, comp=child_comp: _(comp, r))
 
-                        computation.next = promise
-                        self._running.appendleft(computation)
+                        comp.next = promise
+                        self._running.appendleft(comp)
             case Callable():
 
-                def _(computation: InProcessComputation[Any], r: Any | Exception) -> None:
-                    assert computation.next is None
-                    self._set_final_value(computation, FinalValue(r))
+                def _(comp: IPC[Any], r: Any | Exception) -> None:
+                    assert comp.next is None
+                    self._set(comp, FV(r))
 
-                self._io.dispatch(computation.coro, lambda r, comp=computation: _(comp, r))
-                self._awaiting[computation] = None
+                self._io.dispatch(comp.coro, lambda r, comp=comp: _(comp, r))
+                self._awaiting[comp] = None
 
         return True
 
@@ -170,15 +170,15 @@ class Scheduler[T]:
     def size(self) -> int:
         return len(self._running) + len(self._awaiting) + self._in.qsize()
 
-    def _set_final_value(self, computation: InProcessComputation[T], final_value: FinalValue[T]) -> None:
-        assert computation.final is None
-        computation.final = final_value
-        if (f := self._comp_to_f.pop(computation, None)) is not None:
-            match computation.final.v:
+    def _set(self, comp: IPC[T], final_value: FV[T]) -> None:
+        assert comp.final is None
+        comp.final = final_value
+        if (f := self._comp_to_f.pop(comp, None)) is not None:
+            match comp.final.v:
                 case Exception():
-                    f.set_exception(computation.final.v)
+                    f.set_exception(comp.final.v)
                 case _:
-                    f.set_result(computation.final.v)
+                    f.set_result(comp.final.v)
 
 
 def batch[T](queue: Queue[T], n: int, f: Callable[[T], None]) -> None:
