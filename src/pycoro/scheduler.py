@@ -28,7 +28,7 @@ class IPC[T]:
     def __init__(
         self,
         coro: Computation[T],
-        next: Any | Exception | P | None,
+        next: Any | Exception | Promise[T] | None,
         final: FV[T] | None,
     ) -> None:
         self.coro = coro
@@ -36,7 +36,7 @@ class IPC[T]:
         self.final = final
 
 
-class P[T]: ...
+class Promise[T]: ...
 
 
 class Scheduler[T]:
@@ -47,7 +47,7 @@ class Scheduler[T]:
         self._running: deque[IPC[T] | tuple[IPC[T], Future[T]]] = deque()
         self._awaiting: dict[IPC[T], IPC[T] | None] = {}
 
-        self._p_to_comp: dict[P[T], IPC[T]] = {}
+        self._p_to_comp: dict[Promise[T], IPC[T]] = {}
         self._comp_to_f: dict[IPC[T], Future[T]] = {}
 
     def add(self, c: Computation[T]) -> Handle[T]:
@@ -112,7 +112,7 @@ class Scheduler[T]:
                     yielded = FV(e.value)
 
                 match yielded:
-                    case P():
+                    case Promise():
                         child_comp = self._p_to_comp.pop(yielded)
 
                         match child_comp.final:
@@ -127,7 +127,7 @@ class Scheduler[T]:
 
                     case Generator():
                         child_comp = IPC(yielded, None, None)
-                        promise = P()
+                        promise = Promise()
                         self._p_to_comp[promise] = child_comp
 
                         self._running.appendleft(child_comp)
@@ -137,7 +137,7 @@ class Scheduler[T]:
 
                     case Callable():
                         child_comp = IPC(yielded, None, None)
-                        promise = P()
+                        promise = Promise()
                         self._p_to_comp[promise] = child_comp
 
                         def _(comp: IPC[Any], r: Any | Exception) -> None:
