@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, assert_type
 
-from pycoro import Scheduler, typesafe
+from pycoro import P, Scheduler, typesafe
 from pycoro.io.function import FunctionIO
 
 if TYPE_CHECKING:
@@ -14,12 +14,18 @@ def coroutine(n: int) -> Computation[str]:
         return "I finished"
 
     foo_promise = yield from typesafe(lambda: f"foo.{n}")
+    assert_type(foo_promise, P[str])
     bar_promise = yield from typesafe(lambda: f"bar.{n}")
+    assert_type(bar_promise, P[str])
     baz_promise = yield from typesafe(coroutine(n - 1))
+    assert_type(baz_promise, P[str])
 
     foo = yield from typesafe(foo_promise)
+    assert_type(foo, str)
     bar = yield from typesafe(bar_promise)
+    assert_type(bar, str)
     baz = yield from typesafe(baz_promise)
+    assert_type(baz, str)
     return f"{foo}.{bar}.{baz}"
 
 
