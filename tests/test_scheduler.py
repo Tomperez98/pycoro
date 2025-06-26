@@ -3,9 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, assert_type
 
-from pycoro import Promise, Scheduler
+from pycoro import Promise, Scheduler, typesafe
 from pycoro.io.function import FunctionIO
-from pycoro.typing import typesafe
 
 if TYPE_CHECKING:
     from pycoro import Computation
