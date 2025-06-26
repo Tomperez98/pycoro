@@ -113,6 +113,8 @@ class Scheduler[I: Hashable, O]:
                             yielded = comp.coro.send(comp.next)
                 except StopIteration as e:
                     yielded = FV(e.value)
+                except Exception as e:
+                    yielded = FV(e)
 
                 match yielded:
                     case Promise():

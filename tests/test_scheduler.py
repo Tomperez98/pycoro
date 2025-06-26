@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, assert_type
 
+import pytest
+
 from pycoro import Promise, Scheduler, typesafe
 from pycoro.io.function import FunctionIO
 
@@ -46,6 +48,36 @@ def test_coroutine_invocation() -> None:
 
     assert h.result().startswith(f"foo.{n}")
     assert h.result().endswith("finished")
+
+    s.shutdown()
+    io.shutdown()
+
+
+def test_coroutine_with_failure() -> None:
+    def fail() -> None:
+        raise NotImplementedError
+
+    def coroutine() -> Computation[Callable[[], None], None]:
+        foo_promise = yield from typesafe(fail)
+        assert_type(foo_promise, Promise)
+
+        foo = yield from typesafe(foo_promise)
+        assert_type(foo, Any)
+
+    io = FunctionIO[Callable[[], None], None](100)
+    io.worker()
+
+    s = Scheduler(io, 100)
+    h = s.add(coroutine())
+    while s.size() > 0:
+        cqes = io.dequeue(100)
+        for cqe in cqes:
+            cqe.callback(cqe.value)
+
+        s.run_until_blocked(0)
+
+    with pytest.raises(NotImplementedError):
+        h.result()
 
     s.shutdown()
     io.shutdown()
