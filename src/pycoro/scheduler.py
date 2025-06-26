@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import contextlib
 from collections import deque
 from collections.abc import Generator, Hashable
 from concurrent.futures import Future
 from queue import Empty, Queue
-from typing import TYPE_CHECKING, Any, assert_never, cast
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from pycoro import io
@@ -40,12 +41,25 @@ class IPC[I, O]:
         self.next: O | Exception | Promise[O] | None = None
         self.final: FV[O] | None = None
 
+        self._unyielded: list[Promise[O]] = []
+        self._final: FV[O] | None = None
+
     def send(self, v: Promise[O] | O | Exception | None) -> Yieldable[I, O] | FV[O]:
         assert isinstance(self.coro, Generator), "can only run send in a computation that's a coroutine"
+
+
+        if self._final is not None:
+            if self._unyielded:
+                return self._unyielded.pop()
+            return self._final
+
         try:
             match self.next:
                 case Exception():
                     yielded = self.coro.throw(self.next)
+                case Promise():
+                    self._unyielded.append(self.next)
+                    yielded = self.coro.send(self.next)
                 case _:
                     yielded = self.coro.send(self.next)
         except StopIteration as e:
@@ -53,7 +67,18 @@ class IPC[I, O]:
         except Exception as e:
             yielded = FV(e)
 
-        return yielded
+        match yielded:
+            case Promise():
+                with contextlib.suppress(ValueError):
+                    self._unyielded.remove(yielded)
+                return yielded
+            case FV():
+                self._final = yielded
+                if self._unyielded:
+                    return self._unyielded.pop()
+                return self._final
+            case _:
+                return yielded
 
 
 class Scheduler[I: Hashable, O]:
@@ -109,8 +134,6 @@ class Scheduler[I: Hashable, O]:
                     comp, future = item
                     assert comp.next is None
                     self._comp_to_f[comp] = future
-                case _:
-                    assert_never(item)
         except IndexError:
             return False
 
