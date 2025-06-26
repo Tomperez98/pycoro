@@ -57,18 +57,24 @@ def test_coroutine_with_failure() -> None:
     def fail() -> None:
         raise NotImplementedError
 
-    def coroutine() -> Computation[Callable[[], None], None]:
+    def coroutine(*, exit: bool) -> Computation[Callable[[], None], None]:
+        if exit:
+            return
         foo_promise = yield from typesafe(fail)
         assert_type(foo_promise, Promise)
+        bar_promise = yield from typesafe(coroutine(exit=True))
+        assert_type(bar_promise, Promise[None])
 
         foo = yield from typesafe(foo_promise)
         assert_type(foo, Any)
+        bar = yield from (typesafe(bar_promise))
+        assert_type(bar, None)
 
     io = FunctionIO[Callable[[], None], None](100)
     io.worker()
 
     s = Scheduler(io, 100)
-    h = s.add(coroutine())
+    h = s.add(coroutine(exit=False))
     while s.size() > 0:
         cqes = io.dequeue(100)
         for cqe in cqes:

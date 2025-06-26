@@ -34,12 +34,26 @@ class IPC[I, O]:
     def __init__(
         self,
         coro: Computation[I, O] | I,
-        next: O | Exception | Promise[O] | None,
-        final: FV[O] | None,
     ) -> None:
         self.coro = coro
-        self.next = next
-        self.final = final
+
+        self.next: O | Exception | Promise[O] | None = None
+        self.final: FV[O] | None = None
+
+    def send(self, v: Promise[O] | O | Exception | None) -> Yieldable[I, O] | FV[O]:
+        assert isinstance(self.coro, Generator), "can only run send in a computation that's a coroutine"
+        try:
+            match self.next:
+                case Exception():
+                    yielded = self.coro.throw(self.next)
+                case _:
+                    yielded = self.coro.send(self.next)
+        except StopIteration as e:
+            yielded = FV(e.value)
+        except Exception as e:
+            yielded = FV(e)
+
+        return yielded
 
 
 class Scheduler[I: Hashable, O]:
@@ -55,7 +69,7 @@ class Scheduler[I: Hashable, O]:
 
     def add(self, c: Computation[I, O]) -> Handle[O]:
         f = Future[O]()
-        self._in.put_nowait((IPC(c, None, None), f))
+        self._in.put_nowait((IPC(c), f))
         return Handle(f)
 
     def shutdown(self) -> None:
@@ -104,17 +118,7 @@ class Scheduler[I: Hashable, O]:
 
         match comp.coro:
             case Generator():
-                yielded: Yieldable[I, O] | FV[O]
-                try:
-                    match comp.next:
-                        case Exception():
-                            yielded = comp.coro.throw(comp.next)
-                        case _:
-                            yielded = comp.coro.send(comp.next)
-                except StopIteration as e:
-                    yielded = FV(e.value)
-                except Exception as e:
-                    yielded = FV(e)
+                yielded = comp.send(comp.next)
 
                 match yielded:
                     case Promise():
@@ -131,7 +135,7 @@ class Scheduler[I: Hashable, O]:
                         self._set(comp, yielded)
 
                     case Generator():
-                        child_comp = IPC[I, O](yielded, None, None)
+                        child_comp = IPC[I, O](yielded)
                         promise = Promise()
                         self._p_to_comp[promise] = child_comp
 
@@ -141,7 +145,7 @@ class Scheduler[I: Hashable, O]:
                         self._running.appendleft(comp)
 
                     case _:
-                        child_comp = IPC[I, O](yielded, None, None)
+                        child_comp = IPC[I, O](yielded)
                         promise = Promise()
                         self._p_to_comp[promise] = child_comp
 
