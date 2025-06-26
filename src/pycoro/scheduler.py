@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from concurrent.futures import Future
 from queue import Empty, Queue
-from typing import TYPE_CHECKING, assert_never, cast
+from typing import TYPE_CHECKING, Any, assert_never, cast
 
 if TYPE_CHECKING:
     from pycoro import io
@@ -13,8 +13,8 @@ if TYPE_CHECKING:
 class Promise[T]: ...
 
 
-type Yieldable[I, O] = Computation[I, O] | Promise[O]
-type Computation[I, O] = Generator[Yieldable[I, O], Promise[O] | O | None, O] | I
+type Yieldable[I, O] = Computation[I, O] | Promise[O] | I
+type Computation[I, O] = Generator[Yieldable[I, O], Any, O]
 
 
 class Handle[O]:
@@ -33,7 +33,7 @@ class FV[O]:
 class IPC[I, O]:
     def __init__(
         self,
-        coro: Computation[I, O],
+        coro: Computation[I, O] | I,
         next: O | Exception | Promise[O] | None,
         final: FV[O] | None,
     ) -> None:
@@ -69,8 +69,13 @@ class Scheduler[I, O]:
     def run_until_blocked(self, time: int) -> None:
         assert len(self._running) == 0
 
-        size = self._in.qsize()
-        batch(self._in, size, lambda c: self._running.appendleft(c))
+        for _ in range(self._in.qsize()):
+            try:
+                e = self._in.get_nowait()
+            except Empty:
+                return
+            self._running.appendleft(e)
+            self._in.task_done()
 
         self.tick(time)
         assert len(self._running) == 0
@@ -178,13 +183,3 @@ class Scheduler[I, O]:
                     f.set_exception(comp.final.v)
                 case _:
                     f.set_result(comp.final.v)
-
-
-def batch[T](queue: Queue[T], n: int, f: Callable[[T], None]) -> None:
-    for _ in range(n):
-        try:
-            e = queue.get_nowait()
-        except Empty:
-            return
-        f(e)
-        queue.task_done()
