@@ -174,22 +174,14 @@ class Scheduler[I: Hashable, O]:
                         promise = Promise()
                         self._p_to_comp[promise] = child_comp
 
-                        def _(comp: IPC[I, O], r: O | Exception) -> None:
-                            assert comp.next is None
-                            self._set(comp, FV(r))
-
-                        self._io.dispatch(cast("I", yielded), lambda r, comp=child_comp: _(comp, r))
+                        self._io.dispatch(cast("I", yielded), lambda r, comp=child_comp: self._set(comp, FV(r)))
 
                         comp.next = promise
                         self._running.appendleft(comp)
 
             case _:
-
-                def _(comp: IPC[I, O], r: O | Exception) -> None:
-                    assert comp.next is None
-                    self._set(comp, FV(r))
-
-                self._io.dispatch(comp.coro, lambda r, comp=comp: _(comp, r))
+                assert comp.next is None
+                self._io.dispatch(comp.coro, lambda r, comp=comp: self._set(comp, FV(r)))
                 self._awaiting[comp] = None
         return True
 
