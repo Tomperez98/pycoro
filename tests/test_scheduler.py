@@ -87,3 +87,47 @@ def test_coroutine_with_failure() -> None:
 
     s.shutdown()
     io.shutdown()
+
+
+def test_function() -> None:
+    io = FunctionIO[Callable[[], str], str](100)
+    io.worker()
+
+    s = Scheduler(io, 100)
+    h = s.add(lambda: "hi")
+    while s.size() > 0:
+        cqes = io.dequeue(100)
+        for cqe in cqes:
+            cqe.callback(cqe.value)
+
+        s.run_until_blocked(0)
+
+    assert h.result() == "hi"
+
+    s.shutdown()
+    io.shutdown()
+
+
+def test_structure_concurrency() -> None:
+    def coro() -> Computation[Callable[[], str], str]:
+        _ = yield from typesafe(lambda: "hi")
+        _ = yield from typesafe(lambda: "hi")
+        _ = yield from typesafe(lambda: "hi")
+        return "I'm done"
+
+    io = FunctionIO[Callable[[], str], str](100)
+    io.worker()
+
+    s = Scheduler(io, 100)
+    h = s.add(coro())
+    while s.size() > 0:
+        cqes = io.dequeue(100)
+        for cqe in cqes:
+            cqe.callback(cqe.value)
+
+        s.run_until_blocked(0)
+
+    assert h.result() == "I'm done"
+
+    s.shutdown()
+    io.shutdown()

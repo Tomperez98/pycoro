@@ -91,7 +91,7 @@ class Scheduler[I: Hashable, O]:
         self._p_to_comp: dict[Promise[O], IPC[I, O]] = {}
         self._comp_to_f: dict[IPC[I, O], Future[O]] = {}
 
-    def add(self, c: Computation[I, O]) -> Handle[O]:
+    def add(self, c: Computation[I, O] | I) -> Handle[O]:
         f = Future[O]()
         self._in.put_nowait((IPC(c), f))
         return Handle(f)
