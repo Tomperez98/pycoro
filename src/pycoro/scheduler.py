@@ -41,16 +41,15 @@ class IPC[I, O]:
         self.next: O | Exception | Promise[O] | None = None
         self.final: FV[O] | None = None
 
-        self._unyielded: list[Promise[O]] = []
+        self._pend: list[Promise[O]] = []
         self._final: FV[O] | None = None
 
     def send(self, v: Promise[O] | O | Exception | None) -> Yieldable[I, O] | FV[O]:
         assert isinstance(self.coro, Generator), "can only run send in a computation that's a coroutine"
 
-
         if self._final is not None:
-            if self._unyielded:
-                return self._unyielded.pop()
+            if self._pend:
+                return self._pend.pop()
             return self._final
 
         try:
@@ -58,7 +57,7 @@ class IPC[I, O]:
                 case Exception():
                     yielded = self.coro.throw(self.next)
                 case Promise():
-                    self._unyielded.append(self.next)
+                    self._pend.append(self.next)
                     yielded = self.coro.send(self.next)
                 case _:
                     yielded = self.coro.send(self.next)
@@ -70,12 +69,12 @@ class IPC[I, O]:
         match yielded:
             case Promise():
                 with contextlib.suppress(ValueError):
-                    self._unyielded.remove(yielded)
+                    self._pend.remove(yielded)
                 return yielded
             case FV():
                 self._final = yielded
-                if self._unyielded:
-                    return self._unyielded.pop()
+                if self._pend:
+                    return self._pend.pop()
                 return self._final
             case _:
                 return yielded
@@ -116,7 +115,10 @@ class Scheduler[I: Hashable, O]:
             self._running.appendleft(e)
             self._in.task_done()
 
+        assert self._in.qsize() == 0
+
         self.tick(time)
+
         assert len(self._running) == 0
 
     def tick(self, time: int) -> None:
