@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Generator
+from collections.abc import Generator, Hashable
 from concurrent.futures import Future
 from queue import Empty, Queue
 from typing import TYPE_CHECKING, Any, assert_never, cast
@@ -42,7 +42,7 @@ class IPC[I, O]:
         self.final = final
 
 
-class Scheduler[I, O]:
+class Scheduler[I: Hashable, O]:
     def __init__(self, io: io.IO[I, O], size: int) -> None:
         self._io = io
         self._in = Queue[tuple[IPC[I, O], Future[O]]](size)

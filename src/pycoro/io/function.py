@@ -73,5 +73,5 @@ class FunctionIO[I: Callable[[], Any], O]:
 
     def worker(self) -> None:
         t = Thread(target=self._worker, daemon=True)
-        t.start()
         self._workers.append(t)
+        t.start()
