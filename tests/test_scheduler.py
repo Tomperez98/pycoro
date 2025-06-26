@@ -1,21 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Generator
-from typing import TYPE_CHECKING, Any, assert_type, overload
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any, assert_type
 
 from pycoro import Promise, Scheduler
 from pycoro.io.function import FunctionIO
+from pycoro.typing import typesafe
 
 if TYPE_CHECKING:
     from pycoro import Computation
-
-
-@overload
-def typesafe[O](v: Promise[O]) -> Generator[Promise[O], O, O]: ...
-@overload
-def typesafe[I, O](v: Computation[I, O] | I) -> Generator[Computation[I, O] | I, Promise[O], Promise[O]]: ...
-def typesafe[I, O](v: Computation[I, O] | Promise[O] | I) -> Generator[Computation[I, O] | Promise[O] | I, Promise[O] | O, Promise[O] | O]:
-    return (yield v)
 
 
 def test_coroutine_invocation() -> None:
