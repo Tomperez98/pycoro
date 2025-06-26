@@ -4,54 +4,57 @@ from collections import deque
 from collections.abc import Callable, Generator
 from concurrent.futures import Future
 from queue import Empty, Queue
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, assert_never, cast
 
 if TYPE_CHECKING:
-    from pycoro import Computation, Yieldable
-    from pycoro.io import IO
+    from pycoro import io
 
 
-class Handle[T]:
-    def __init__(self, f: Future[T]) -> None:
+class Promise[T]: ...
+
+
+type Yieldable[I, O] = Computation[I, O] | Promise[O]
+type Computation[I, O] = Generator[Yieldable[I, O], Promise[O] | O | None, O] | I
+
+
+class Handle[O]:
+    def __init__(self, f: Future[O]) -> None:
         self._f = f
 
-    def result(self, timeout: float | None = None) -> T:
+    def result(self, timeout: float | None = None) -> O:
         return self._f.result(timeout)
 
 
-class FV[T]:
-    def __init__(self, v: T | Exception) -> None:
+class FV[O]:
+    def __init__(self, v: O | Exception) -> None:
         self.v = v
 
 
-class IPC[T]:
+class IPC[I, O]:
     def __init__(
         self,
-        coro: Computation[T],
-        next: Any | Exception | Promise[T] | None,
-        final: FV[T] | None,
+        coro: Computation[I, O],
+        next: O | Exception | Promise[O] | None,
+        final: FV[O] | None,
     ) -> None:
         self.coro = coro
         self.next = next
         self.final = final
 
 
-class Promise[T]: ...
-
-
-class Scheduler[T]:
-    def __init__(self, io: IO[T], size: int) -> None:
+class Scheduler[I, O]:
+    def __init__(self, io: io.IO[I, O], size: int) -> None:
         self._io = io
-        self._in = Queue[tuple[IPC[T], Future[T]]](size)
+        self._in = Queue[tuple[IPC[I, O], Future[O]]](size)
 
-        self._running: deque[IPC[T] | tuple[IPC[T], Future[T]]] = deque()
-        self._awaiting: dict[IPC[T], IPC[T] | None] = {}
+        self._running: deque[IPC[I, O] | tuple[IPC[I, O], Future[O]]] = deque()
+        self._awaiting: dict[IPC[I, O], IPC[I, O] | None] = {}
 
-        self._p_to_comp: dict[Promise[T], IPC[T]] = {}
-        self._comp_to_f: dict[IPC[T], Future[T]] = {}
+        self._p_to_comp: dict[Promise[O], IPC[I, O]] = {}
+        self._comp_to_f: dict[IPC[I, O], Future[O]] = {}
 
-    def add(self, c: Computation[T]) -> Handle[T]:
-        f = Future[T]()
+    def add(self, c: Computation[I, O]) -> Handle[O]:
+        f = Future[O]()
         self._in.put_nowait((IPC(c, None, None), f))
         return Handle(f)
 
@@ -62,20 +65,14 @@ class Scheduler[T]:
         assert len(self._awaiting) == 0
         assert len(self._p_to_comp) == 0
         assert len(self._comp_to_f) == 0
-        self._io.shutdown()
 
     def run_until_blocked(self, time: int) -> None:
         assert len(self._running) == 0
 
         size = self._in.qsize()
-        batch(
-            self._in,
-            size,
-            lambda c: self._running.appendleft(c),
-        )
+        batch(self._in, size, lambda c: self._running.appendleft(c))
 
         self.tick(time)
-
         assert len(self._running) == 0
 
     def tick(self, time: int) -> None:
@@ -89,19 +86,20 @@ class Scheduler[T]:
             match item := self._running.pop():
                 case IPC():
                     comp = item
-                case _:
+                case IPC(), Future():
                     comp, future = item
                     assert comp.next is None
-                    assert comp.final is None
-
                     self._comp_to_f[comp] = future
+                case _:
+                    assert_never(item)
         except IndexError:
             return False
 
         assert comp.final is None
+
         match comp.coro:
             case Generator():
-                yielded: Yieldable | FV[T]
+                yielded: Yieldable[I, O] | FV[O]
                 try:
                     match comp.next:
                         case Exception():
@@ -126,7 +124,7 @@ class Scheduler[T]:
                         self._set(comp, yielded)
 
                     case Generator():
-                        child_comp = IPC(yielded, None, None)
+                        child_comp = IPC[I, O](yielded, None, None)
                         promise = Promise()
                         self._p_to_comp[promise] = child_comp
 
@@ -135,28 +133,28 @@ class Scheduler[T]:
                         comp.next = promise
                         self._running.appendleft(comp)
 
-                    case Callable():
-                        child_comp = IPC(yielded, None, None)
+                    case _:
+                        child_comp = IPC[I, O](yielded, None, None)
                         promise = Promise()
                         self._p_to_comp[promise] = child_comp
 
-                        def _(comp: IPC[Any], r: Any | Exception) -> None:
+                        def _(comp: IPC[I, O], r: O | Exception) -> None:
                             assert comp.next is None
                             self._set(comp, FV(r))
 
-                        self._io.dispatch(yielded, lambda r, comp=child_comp: _(comp, r))
+                        self._io.dispatch(cast("I", yielded), lambda r, comp=child_comp: _(comp, r))
 
                         comp.next = promise
                         self._running.appendleft(comp)
-            case Callable():
 
-                def _(comp: IPC[Any], r: Any | Exception) -> None:
+            case _:
+
+                def _(comp: IPC[I, O], r: O | Exception) -> None:
                     assert comp.next is None
                     self._set(comp, FV(r))
 
                 self._io.dispatch(comp.coro, lambda r, comp=comp: _(comp, r))
                 self._awaiting[comp] = None
-
         return True
 
     def _unblock(self) -> None:
@@ -171,7 +169,7 @@ class Scheduler[T]:
     def size(self) -> int:
         return len(self._running) + len(self._awaiting) + self._in.qsize()
 
-    def _set(self, comp: IPC[T], final_value: FV[T]) -> None:
+    def _set(self, comp: IPC[I, O], final_value: FV[O]) -> None:
         assert comp.final is None
         comp.final = final_value
         if (f := self._comp_to_f.pop(comp, None)) is not None:

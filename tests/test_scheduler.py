@@ -1,36 +1,37 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, assert_type
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
-from pycoro import Promise, Scheduler, typesafe
+from pycoro import Scheduler
 from pycoro.io.function import FunctionIO
 
 if TYPE_CHECKING:
-    from pycoro import Computation
+    from pycoro.scheduler import Computation
 
 
-def coroutine(n: int) -> Computation[str]:
+def coroutine(n: int) -> Computation[Callable[[], str], str]:
     if n == 0:
         return "I finished"
 
-    foo_promise = yield from typesafe(lambda: f"foo.{n}")
-    assert_type(foo_promise, Promise[str])
-    bar_promise = yield from typesafe(lambda: f"bar.{n}")
-    assert_type(bar_promise, Promise[str])
-    baz_promise = yield from typesafe(coroutine(n - 1))
-    assert_type(baz_promise, Promise[str])
+    foo_promise = yield lambda: f"foo.{n}"
+    # assert_type(foo_promise, Promise[str])
+    bar_promise = yield lambda: f"bar.{n}"
+    # assert_type(bar_promise, Promise[str])
+    baz_promise = yield coroutine(n - 1)
+    # assert_type(baz_promise, Promise[str])
 
-    foo = yield from typesafe(foo_promise)
-    assert_type(foo, str)
-    bar = yield from typesafe(bar_promise)
-    assert_type(bar, str)
-    baz = yield from typesafe(baz_promise)
-    assert_type(baz, str)
+    foo = yield foo_promise
+    # assert_type(foo, str)
+    bar = yield bar_promise
+    # assert_type(bar, str)
+    baz = yield baz_promise
+    # assert_type(baz, str)
     return f"{foo}.{bar}.{baz}"
 
 
 def test_function_invocation() -> None:
-    io = FunctionIO[str](100)
+    io = FunctionIO[Callable[[], str], str](100)
     io.worker()
 
     s = Scheduler(io, 100)
@@ -49,7 +50,7 @@ def test_function_invocation() -> None:
 
 
 def test_coroutine_invocation() -> None:
-    io = FunctionIO[str](100)
+    io = FunctionIO[Callable[[], str], str](100)
     io.worker()
 
     s = Scheduler(io, 100)

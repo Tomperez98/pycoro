@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from collections.abc import Callable
 
 from pycoro.io.function import FunctionIO
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 
 def greet(name: str) -> Callable[[], str]:
@@ -21,7 +18,7 @@ def callback_that_asserts(expected: str) -> Callable[[str | Exception], None]:
 
 
 def test_fio() -> None:
-    fio = FunctionIO[str](100)
+    fio = FunctionIO[Callable[[], str], str](100)
     fio.worker()
     fio.worker()
     fio.worker()
