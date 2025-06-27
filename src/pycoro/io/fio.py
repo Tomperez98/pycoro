@@ -1,34 +1,24 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable
 from queue import Empty, Queue, ShutDown
 from threading import Thread
 from typing import TYPE_CHECKING, Any
+
+from pycoro.bus import CQE, SQE
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-@dataclass(frozen=True)
-class SQE[I: Callable[[], Any], O]:
-    value: I
-    callback: Callable[[O | Exception], None]
-
-
-@dataclass(frozen=True)
-class CQE[O]:
-    value: O | Exception
-    callback: Callable[[O | Exception], None]
-
-
-class FunctionIO[I: Callable[[], Any], O]:
+class FIO[I: Callable[[], Any], O]:
     def __init__(self, size: int) -> None:
         self._sq = Queue[SQE[I, O]](size)
         self._cq = Queue[CQE[O]](size)
         self._workers: list[Thread] = []
 
-    def dispatch(self, value: I, callback: Callable[[O | Exception], None]) -> None:
-        self._sq.put_nowait(SQE(value, callback))
+    def dispatch(self, sqe: SQE[I, O]) -> None:
+        self._sq.put_nowait(sqe)
 
     def dequeue(self, n: int) -> list[CQE[O]]:
         cqes: list[CQE[O]] = []

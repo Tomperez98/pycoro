@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from pycoro.io.function import FunctionIO
+from pycoro import SQE
+from pycoro.io.fio import FIO
 
 
 def greet(name: str) -> Callable[[], str]:
@@ -18,7 +19,7 @@ def callback_that_asserts(expected: str) -> Callable[[str | Exception], None]:
 
 
 def test_fio() -> None:
-    fio = FunctionIO[Callable[[], str], str](100)
+    fio = FIO[Callable[[], str], str](100)
     fio.worker()
     fio.worker()
     fio.worker()
@@ -27,7 +28,7 @@ def test_fio() -> None:
     greetings: list[str] = ["Hello A", "Hello B", "Hello C", "Hello D"]
 
     for n, g in zip(names, greetings, strict=True):
-        fio.dispatch(greet(n), callback_that_asserts(g))
+        fio.dispatch(SQE(greet(n), callback_that_asserts(g)))
 
     n = 0
     while n < len(names):

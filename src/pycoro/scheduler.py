@@ -7,6 +7,8 @@ from concurrent.futures import Future
 from queue import Empty, Queue
 from typing import TYPE_CHECKING, Any, cast
 
+from pycoro.bus import SQE
+
 if TYPE_CHECKING:
     from pycoro import io
 
@@ -191,7 +193,7 @@ class Scheduler[I: Hashable, O]:
                         child_comp = _IPC[I, O](yielded)
                         promise = Promise()
                         self._p_to_comp[promise] = child_comp
-                        self._io.dispatch(cast("I", yielded), lambda r, comp=child_comp: self._set(comp, _FV(r)))
+                        self._io.dispatch(SQE(cast("I", yielded), lambda r, comp=child_comp: self._set(comp, _FV(r))))
 
                         comp.next = promise
                         self._running.appendleft(comp)
@@ -200,7 +202,7 @@ class Scheduler[I: Hashable, O]:
                 assert comp.next is None
                 assert comp not in self._awaiting
 
-                self._io.dispatch(comp.coro, lambda r, comp=comp: self._set(comp, _FV(r)))
+                self._io.dispatch(SQE(comp.coro, lambda r, comp=comp: self._set(comp, _FV(r))))
                 self._awaiting[comp] = None
         return True
 

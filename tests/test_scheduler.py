@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, assert_type
 import pytest
 
 from pycoro import Promise, Scheduler, typesafe
-from pycoro.io.function import FunctionIO
+from pycoro.io.fio import FIO
 from pycoro.scheduler import Time
 
 if TYPE_CHECKING:
@@ -38,7 +38,7 @@ def test_coroutine_invocation() -> None:
 
         return f"{foo}.{bar}.{baz}"
 
-    io = FunctionIO[Callable[[], str], str](100)
+    io = FIO[Callable[[], str], str](100)
     io.worker()
 
     s = Scheduler(io, 100)
@@ -84,7 +84,7 @@ def test_coroutine_with_failure() -> None:
         assert_type(now, int)
         assert now == 2
 
-    io = FunctionIO[Callable[[], None], None](100)
+    io = FIO[Callable[[], None], None](100)
     io.worker()
 
     s = Scheduler(io, 100)
@@ -106,7 +106,7 @@ def test_coroutine_with_failure() -> None:
 
 
 def test_function() -> None:
-    io = FunctionIO[Callable[[], str], str](100)
+    io = FIO[Callable[[], str], str](100)
     io.worker()
 
     s = Scheduler(io, 100)
@@ -132,7 +132,7 @@ def test_structure_concurrency() -> None:
 
         return "I'm done"
 
-    io = FunctionIO[Callable[[], str], str](100)
+    io = FIO[Callable[[], str], str](100)
     io.worker()
 
     s = Scheduler(io, 100)
