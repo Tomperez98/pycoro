@@ -7,6 +7,7 @@ import pytest
 
 from pycoro import Promise, Scheduler, typesafe
 from pycoro.io.function import FunctionIO
+from pycoro.scheduler import Time
 
 if TYPE_CHECKING:
     from pycoro import Computation
@@ -23,6 +24,10 @@ def test_coroutine_invocation() -> None:
         assert_type(bar_promise, Promise)
         baz_promise = yield from typesafe(coroutine(n - 1))
         assert_type(baz_promise, Promise[str])
+
+        now = yield from typesafe(Time())
+        assert_type(now, int)
+        assert now == 0
 
         foo = yield from typesafe(foo_promise)
         assert_type(foo, Any)
@@ -67,20 +72,31 @@ def test_coroutine_with_failure() -> None:
 
         foo = yield from typesafe(foo_promise)
         assert_type(foo, Any)
+
+        now = yield from typesafe(Time())
+        assert_type(now, int)
+        assert now == 1
+
         bar = yield from (typesafe(bar_promise))
         assert_type(bar, None)
+
+        now = yield from typesafe(Time())
+        assert_type(now, int)
+        assert now == 2
 
     io = FunctionIO[Callable[[], None], None](100)
     io.worker()
 
     s = Scheduler(io, 100)
     h = s.add(coroutine(exit=False))
+    now = 0
     while s.size() > 0:
-        cqes = io.dequeue(100)
+        cqes = io.dequeue(10)
         for cqe in cqes:
             cqe.callback(cqe.value)
 
-        s.run_until_blocked(0)
+        s.run_until_blocked(now)
+        now += 1
 
     with pytest.raises(NotImplementedError):
         h.result()
@@ -113,6 +129,8 @@ def test_structure_concurrency() -> None:
         _ = yield from typesafe(lambda: "hi")
         _ = yield from typesafe(lambda: "hi")
         _ = yield from typesafe(lambda: "hi")
+
+        assert (yield Time()) == 0
         return "I'm done"
 
     io = FunctionIO[Callable[[], str], str](100)
