@@ -188,6 +188,8 @@ class Scheduler[I: Hashable, O]:
 
             case _:
                 assert comp.next is None
+                assert comp not in self._awaiting
+
                 self._io.dispatch(comp.coro, lambda r, comp=comp: self._set(comp, _FV(r)))
                 self._awaiting[comp] = None
         return True
