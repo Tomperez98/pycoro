@@ -12,10 +12,11 @@ if TYPE_CHECKING:
 
 
 class FIO[I: Callable[[], Any], O]:
-    def __init__(self, size: int) -> None:
+    def __init__(self, size: int, workers: int) -> None:
         self._sq = Queue[SQE[I, O]](size)
         self._cq = Queue[CQE[O]](size)
-        self._workers: list[Thread] = []
+        self._workers = workers
+        self._threads: list[Thread] = []
 
     def dispatch(self, sqe: SQE[I, O]) -> None:
         self._sq.put_nowait(sqe)
@@ -33,13 +34,19 @@ class FIO[I: Callable[[], Any], O]:
     def shutdown(self) -> None:
         self._cq.shutdown()
         self._sq.shutdown()
-        for t in self._workers:
+        for t in self._threads:
             t.join()
 
-        self._workers.clear()
-        assert len(self._workers) == 0
+        self._threads.clear()
+        assert len(self._threads) == 0
 
         self._sq.join()
+
+    def start(self) -> None:
+        for _ in range(self._workers):
+            t = Thread(target=self._worker, daemon=True)
+            t.start()
+            self._threads.append(t)
 
     def _worker(self) -> None:
         while True:
@@ -60,8 +67,3 @@ class FIO[I: Callable[[], Any], O]:
                 )
             )
             self._sq.task_done()
-
-    def worker(self) -> None:
-        t = Thread(target=self._worker, daemon=True)
-        self._workers.append(t)
-        t.start()

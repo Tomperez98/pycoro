@@ -38,10 +38,11 @@ def test_coroutine_invocation() -> None:
 
         return f"{foo}.{bar}.{baz}"
 
-    io = FIO[Callable[[], str], str](100)
-    io.worker()
+    io = FIO[Callable[[], str], str](100, 1)
+    io.start()
 
     s = Scheduler(io, 100)
+
     n = 10
     h = s.add(coroutine(n))
     while s.size() > 0:
@@ -55,7 +56,6 @@ def test_coroutine_invocation() -> None:
     assert h.result().endswith("finished")
 
     s.shutdown()
-    io.shutdown()
 
 
 def test_coroutine_with_failure() -> None:
@@ -84,8 +84,8 @@ def test_coroutine_with_failure() -> None:
         assert_type(now, int)
         assert now == 2
 
-    io = FIO[Callable[[], None], None](100)
-    io.worker()
+    io = FIO[Callable[[], None], None](100, 1)
+    io.start()
 
     s = Scheduler(io, 100)
     h = s.add(coroutine(exit=False))
@@ -102,14 +102,14 @@ def test_coroutine_with_failure() -> None:
         h.result()
 
     s.shutdown()
-    io.shutdown()
 
 
 def test_function() -> None:
-    io = FIO[Callable[[], str], str](100)
-    io.worker()
+    io = FIO[Callable[[], str], str](100, 1)
+    io.start()
 
     s = Scheduler(io, 100)
+
     h = s.add(lambda: "hi")
     while s.size() > 0:
         cqes = io.dequeue(100)
@@ -121,7 +121,6 @@ def test_function() -> None:
     assert h.result() == "hi"
 
     s.shutdown()
-    io.shutdown()
 
 
 def test_structure_concurrency() -> None:
@@ -132,10 +131,11 @@ def test_structure_concurrency() -> None:
 
         return "I'm done"
 
-    io = FIO[Callable[[], str], str](100)
-    io.worker()
+    io = FIO[Callable[[], str], str](100, 1)
+    io.start()
 
     s = Scheduler(io, 100)
+
     h = s.add(coro())
     while s.size() > 0:
         cqes = io.dequeue(100)
@@ -147,4 +147,3 @@ def test_structure_concurrency() -> None:
     assert h.result() == "I'm done"
 
     s.shutdown()
-    io.shutdown()

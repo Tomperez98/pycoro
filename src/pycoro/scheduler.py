@@ -112,6 +112,7 @@ class Scheduler[I: Hashable, O]:
 
     def shutdown(self) -> None:
         """Shutdown scheduler."""
+        self._io.shutdown()
         self._in.shutdown()
         self._in.join()
         assert len(self._running) == 0

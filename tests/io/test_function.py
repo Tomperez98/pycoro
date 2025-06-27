@@ -19,10 +19,8 @@ def callback_that_asserts(expected: str) -> Callable[[str | Exception], None]:
 
 
 def test_fio() -> None:
-    fio = FIO[Callable[[], str], str](100)
-    fio.worker()
-    fio.worker()
-    fio.worker()
+    fio = FIO[Callable[[], str], str](100, 2)
+    fio.start()
 
     names: list[str] = ["A", "B", "C", "D"]
     greetings: list[str] = ["Hello A", "Hello B", "Hello C", "Hello D"]
