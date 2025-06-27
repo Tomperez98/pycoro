@@ -12,10 +12,12 @@ if TYPE_CHECKING:
 
 
 # commands.
-class Promise[T]: ...
+class Promise[T]:
+    """Await for computation result."""
 
 
-class Time: ...
+class Time:
+    """Get current time in milliseconds."""
 
 
 # types
@@ -24,10 +26,13 @@ type Computation[I, O] = Generator[_Yieldable[I, O], Any, O]
 
 
 class Handle[O]:
+    """Handle for computation result."""
+
     def __init__(self, f: Future[O]) -> None:
         self._f = f
 
     def result(self, timeout: float | None = None) -> O:
+        """Await for computation result."""
         return self._f.result(timeout)
 
 
@@ -98,11 +103,13 @@ class Scheduler[I: Hashable, O]:
         self._comp_to_f: dict[_IPC[I, O], Future[O]] = {}
 
     def add(self, c: Computation[I, O] | I) -> Handle[O]:
+        """Schedule computation."""
         f = Future[O]()
         self._in.put_nowait((_IPC(c), f))
         return Handle(f)
 
     def shutdown(self) -> None:
+        """Shutdown scheduler."""
         self._in.shutdown()
         self._in.join()
         assert len(self._running) == 0
@@ -111,6 +118,7 @@ class Scheduler[I: Hashable, O]:
         assert len(self._comp_to_f) == 0
 
     def run_until_blocked(self, time: int) -> None:
+        """Execute computations until blocked."""
         assert len(self._running) == 0
 
         for _ in range(self._in.qsize()):
@@ -128,12 +136,14 @@ class Scheduler[I: Hashable, O]:
         assert len(self._running) == 0
 
     def tick(self, time: int) -> None:
+        """Tick."""
         self._unblock()
 
         while self.step(time):
             continue
 
     def step(self, time: int) -> bool:
+        """Take a step."""
         try:
             match item := self._running.pop():
                 case _IPC():
@@ -204,6 +214,7 @@ class Scheduler[I: Hashable, O]:
                 self._running.appendleft(blocked)
 
     def size(self) -> int:
+        """Total computations on the scheduler."""
         return len(self._running) + len(self._awaiting) + self._in.qsize()
 
     def _set(self, comp: _IPC[I, O], final_value: _FV[O]) -> None:

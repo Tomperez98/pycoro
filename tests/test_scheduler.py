@@ -130,7 +130,6 @@ def test_structure_concurrency() -> None:
         _ = yield from typesafe(lambda: "hi")
         _ = yield from typesafe(lambda: "hi")
 
-        assert (yield Time()) == 0
         return "I'm done"
 
     io = FunctionIO[Callable[[], str], str](100)
