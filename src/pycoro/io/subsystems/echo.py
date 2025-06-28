@@ -73,13 +73,13 @@ class EchoSubsystem:
 
     def process(self, sqes: list[SQE[Submission[EchoSubmission], Completion[EchoCompletion]]]) -> list[CQE[Completion[EchoCompletion]]]:
         assert self._workers > 0, "must be at least one worker"
-        return [self.execute(sqe) for sqe in sqes]
-
-    def execute(self, sqe: SQE[Submission[EchoSubmission], Completion[EchoCompletion]]) -> CQE[Completion[EchoCompletion]]:
-        return CQE(
-            Completion(EchoCompletion(sqe.value.v.data)),
-            sqe.callback,
-        )
+        return [
+            CQE(
+                Completion(EchoCompletion(sqe.value.v.data)),
+                sqe.callback,
+            )
+            for sqe in sqes
+        ]
 
     def worker(self, cq: Queue[tuple[CQE[Completion[EchoCompletion]], str]]) -> None:
         while True:
@@ -90,5 +90,5 @@ class EchoSubsystem:
 
             assert sqe.value.v.kind == self.kind
 
-            cq.put((self.execute(sqe), sqe.value.v.kind))
+            cq.put((self.process([sqe])[0], sqe.value.v.kind))
             self._sq.task_done()

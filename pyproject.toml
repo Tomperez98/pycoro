@@ -24,4 +24,8 @@ testpaths = ["tests"]
 addopts = ["--import-mode=importlib"]
 
 [tool.coverage.report]
-exclude_also = ['raise NotImplementedError', 'if TYPE_CHECKING:']
+exclude_also = [
+    'raise NotImplementedError',
+    'if TYPE_CHECKING:',
+    "assert_never(.*)",
+]

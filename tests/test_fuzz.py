@@ -46,8 +46,7 @@ def foo(n: int) -> Computation[Submission[EchoSubmission | StoreSubmission[Comma
 def bar(n: int, data: str) -> Computation[Submission[EchoSubmission | StoreSubmission[Command]], Completion[EchoCompletion | StoreCompletion[Result]]]:
     p: Promise | None = None
     for _ in range(n):
-        p = yield Submission(EchoSubmission(data))
-
+        p = yield Submission[EchoSubmission | StoreSubmission[Command]](EchoSubmission(data))
     assert p is not None
     v = yield p
     return Completion(EchoCompletion(v))

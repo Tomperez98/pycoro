@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any, assert_type
 
 import pytest
 
-from pycoro import Promise, Scheduler, typesafe
+from pycoro import Scheduler
 from pycoro.io.fio import FIO
 from pycoro.scheduler import Time
 
@@ -18,23 +18,16 @@ def test_coroutine_invocation() -> None:
         if n == 0:
             return "I finished"
 
-        foo_promise = yield from typesafe(lambda: f"foo.{n}")
-        assert_type(foo_promise, Promise)
-        bar_promise = yield from typesafe(lambda: f"bar.{n}")
-        assert_type(bar_promise, Promise)
-        baz_promise = yield from typesafe(coroutine(n - 1))
-        assert_type(baz_promise, Promise[str])
+        foo_promise = yield lambda: f"foo.{n}"
+        bar_promise = yield lambda: f"bar.{n}"
+        baz_promise = yield coroutine(n - 1)
 
-        now = yield from typesafe(Time())
-        assert_type(now, int)
+        now = yield Time()
         assert now == 0
 
-        foo = yield from typesafe(foo_promise)
-        assert_type(foo, Any)
-        bar = yield from typesafe(bar_promise)
-        assert_type(bar, Any)
-        baz = yield from typesafe(baz_promise)
-        assert_type(baz, str)
+        foo = yield foo_promise
+        bar = yield bar_promise
+        baz = yield baz_promise
 
         return f"{foo}.{bar}.{baz}"
 
@@ -65,23 +58,19 @@ def test_coroutine_with_failure() -> None:
     def coroutine(*, exit: bool) -> Computation[Callable[[], None], None]:
         if exit:
             return
-        foo_promise = yield from typesafe(fail)
-        assert_type(foo_promise, Promise)
-        bar_promise = yield from typesafe(coroutine(exit=True))
-        assert_type(bar_promise, Promise[None])
+        foo_promise = yield fail
 
-        foo = yield from typesafe(foo_promise)
+        bar_promise = yield coroutine(exit=True)
+
+        foo = yield foo_promise
         assert_type(foo, Any)
 
-        now = yield from typesafe(Time())
-        assert_type(now, int)
+        now = yield Time()
         assert now == 1
 
-        bar = yield from (typesafe(bar_promise))
-        assert_type(bar, None)
+        _ = yield bar_promise
 
-        now = yield from typesafe(Time())
-        assert_type(now, int)
+        now = yield Time()
         assert now == 2
 
     io = FIO[Callable[[], None], None](100, 1)
@@ -125,9 +114,9 @@ def test_function() -> None:
 
 def test_structure_concurrency() -> None:
     def coro() -> Computation[Callable[[], str], str]:
-        _ = yield from typesafe(lambda: "hi")
-        _ = yield from typesafe(lambda: "hi")
-        _ = yield from typesafe(lambda: "hi")
+        _ = yield lambda: "hi"
+        _ = yield lambda: "hi"
+        _ = yield lambda: "hi"
 
         return "I'm done"
 
