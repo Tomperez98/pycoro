@@ -15,7 +15,7 @@ class Kind(Protocol):
 class SubSystem[I: Kind, O: Kind](Kind, Protocol):
     @property
     def size(self) -> int: ...
-    def start(self, cq: Queue[CQE[Completion[O]]]) -> None: ...
+    def start(self, cq: Queue[tuple[CQE[Completion[O]], str]]) -> None: ...
     def shutdown(self) -> None: ...
     def flush(self, time: int) -> None: ...
     def enqueue(self, sqe: SQE[Submission[I], Completion[O]]) -> bool: ...
@@ -35,7 +35,7 @@ class Completion[O: Kind]:
 
 class AIO[I: Kind, O: Kind]:
     def __init__(self, size: int) -> None:
-        self._cq = Queue[CQE[Completion[O]]](size)
+        self._cq = Queue[tuple[CQE[Completion[O]], str]](size)
         self._subsystems: dict[str, SubSystem] = {}
 
     def attach_subsystem(self, subsystem: SubSystem) -> None:
@@ -68,9 +68,12 @@ class AIO[I: Kind, O: Kind]:
         cqes: list[CQE[Completion[O]]] = []
         for _ in range(n):
             try:
-                cqe = self._cq.get_nowait()
+                cqe, kind = self._cq.get_nowait()
             except Empty:
                 break
+
+            if not isinstance(cqe.value, Exception):
+                assert cqe.value.v.kind == kind
             cqes.append(cqe)
             self._cq.task_done()
         return cqes
