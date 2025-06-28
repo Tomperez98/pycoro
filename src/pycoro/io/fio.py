@@ -31,6 +31,9 @@ class FIO[I: Callable[[], Any], O]:
             cqes.append(cqe)
         return cqes
 
+    def flush(self, time: int) -> None:
+        return
+
     def shutdown(self) -> None:
         self._cq.shutdown()
         self._sq.shutdown()

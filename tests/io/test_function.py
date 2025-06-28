@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from pycoro import SQE
-from pycoro.io.fio import FIO
+from pycoro.io import FIO
 
 
 def greet(name: str) -> Callable[[], str]:
