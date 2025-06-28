@@ -20,7 +20,7 @@ class Pycoro[I, O]:
             self.tick(int(time.time() * 1_000))
 
             if self.done():
-                self._scheduler.shutdown()
+                self.shutdown()
                 return
 
     def tick(self, time: int) -> None:

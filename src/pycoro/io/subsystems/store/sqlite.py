@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Hashable
+from collections.abc import Callable, Hashable
 from queue import Full, Queue, ShutDown
 from threading import Thread
 
@@ -13,6 +13,7 @@ from pycoro.io.subsystems.store import StoreCompletion, StoreSubmission, Transac
 class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
     def __init__(self, size: int = 100, batch_size: int = 100) -> None:
         self._sq = Queue[SQE[Submission[StoreSubmission[C]], Completion[StoreCompletion[R]]] | int](size + 1)
+        self._cmd_handlers: dict[type[C], Callable[[C], R]] = {}
         self._thread: Thread | None = None
         self._batch_size = batch_size
 
@@ -56,12 +57,13 @@ class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
         results: list[list[R]] = []
         for transaction in transactions:
             assert len(transaction.cmds) > 0, "expect a command"
+            results.append([self._cmd_handlers[type(cmd)](cmd) for cmd in transaction.cmds])
 
-            cmds_results: list[R] = []
-            for cmd in transaction.cmds:
-                raise NotImplementedError
-            results.append(cmds_results)
         return results
+
+    def add_command_handler(self, cmd: type[C], handler: Callable[[C], R]) -> None:
+        assert cmd not in self._cmd_handlers
+        self._cmd_handlers[cmd] = handler
 
     def worker(self, cq: Queue[tuple[CQE[Completion[StoreCompletion[R]]], str]]) -> None:
         while True:
