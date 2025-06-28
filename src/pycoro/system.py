@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 
 from pycoro.scheduler import Computation, Handle, Scheduler
@@ -16,7 +17,11 @@ class Pycoro[I, O]:
 
     def loop(self) -> None:
         while True:
-            raise NotImplementedError
+            self.tick(int(time.time() * 1_000))
+
+            if self.done():
+                self._scheduler.shutdown()
+                return
 
     def tick(self, time: int) -> None:
         for cqe in self._io.dequeue(self._dequeue_size):
