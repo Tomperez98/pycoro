@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 from queue import Full
+from typing import TYPE_CHECKING
 
 from pycoro import Computation, Promise, Pycoro
 from pycoro.io import AIO
@@ -10,6 +11,9 @@ from pycoro.io.aio import Completion, Submission
 from pycoro.io.subsystems.echo import EchoCompletion, EchoSubmission, EchoSubsystem
 from pycoro.io.subsystems.store import StoreCompletion, StoreSubmission, Transaction
 from pycoro.io.subsystems.store.sqlite import StoreSqliteSubsystem
+
+if TYPE_CHECKING:
+    from pycoro.scheduler import Handle
 
 type Command = ReadCommand
 
@@ -76,13 +80,14 @@ def _run(seed: int) -> None:
     s = Pycoro(io, r.randint(1, 100), r.randint(1, 100))
 
     n_coros = r.randint(1, 100)
+    handles: list[Handle[Completion[EchoCompletion | StoreCompletion[Result]]]] = []
     try:
         for _ in range(n_coros):
             match r.randint(0, 1):
                 case 0:
-                    s.add(bar(r.randint(1, 100), "hi"))
+                    handles.append(s.add(bar(r.randint(1, 100), "hi")))
                 case 1:
-                    s.add(foo(r.randint(1, 100)))
+                    handles.append(s.add(foo(r.randint(1, 100))))
                 case _:
                     raise NotImplementedError
     except Full:
@@ -91,6 +96,17 @@ def _run(seed: int) -> None:
     s.start()
     s.loop()
     assert s.done()
+
+    failed: int = 0
+    for h in handles:
+        try:
+            h.result(0)
+        except TimeoutError:
+            failed += 1
+        except Exception:  # noqa: S110
+            pass
+
+    assert failed == 0
     return
 
 
