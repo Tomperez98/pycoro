@@ -43,7 +43,10 @@ class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
             conn.commit()
         except Exception:
             conn.rollback()
+            conn.close()
             raise
+
+        conn.close()
 
     def shutdown(self) -> None:
         assert self._thread is not None
@@ -77,7 +80,10 @@ class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
             conn.commit()
         except Exception:
             conn.rollback()
+            conn.close()
             raise
+
+        conn.close()
         return results
 
     def add_command_handler(self, cmd: type[C], handler: Callable[[Connection, C], R]) -> None:
