@@ -13,6 +13,8 @@ from pycoro.io.subsystems.store import StoreCompletion, StoreSubmission, Transac
 from pycoro.io.subsystems.store.sqlite import StoreSqliteSubsystem
 
 if TYPE_CHECKING:
+    from sqlite3 import Connection
+
     from pycoro.scheduler import Handle
 
 type Command = ReadCommand
@@ -23,7 +25,8 @@ class ReadCommand:
     id: int
 
 
-def read_handler(cmd: ReadCommand) -> ReadResult:
+def read_handler(conn: Connection, cmd: ReadCommand) -> ReadResult:
+    conn.execute("INSERT INTO users (value) VALUES (?)", (cmd.id,))
     return ReadResult(cmd.id)
 
 
@@ -70,7 +73,7 @@ def _run(seed: int) -> None:
         return
 
     echo_subsystem = EchoSubsystem(echo_subsystem_size, r.randint(1, 3))
-    store_sqlite_subsystem = StoreSqliteSubsystem(store_sqlite_subsystem_size, r.randint(1, 100))
+    store_sqlite_subsystem = StoreSqliteSubsystem(":memory:", ["CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, value INTEGER)"], store_sqlite_subsystem_size, r.randint(1, 100))
     store_sqlite_subsystem.add_command_handler(ReadCommand, read_handler)
 
     io = AIO[EchoSubmission | StoreSubmission[Command], EchoCompletion | StoreCompletion[Result]](io_size)

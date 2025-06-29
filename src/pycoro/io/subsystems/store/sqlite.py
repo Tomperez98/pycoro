@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import contextlib
+import sqlite3
 from collections.abc import Callable, Hashable
 from queue import Full, Queue, ShutDown
+from sqlite3 import Connection
 from threading import Thread
 
 from pycoro.bus import CQE, SQE
@@ -11,11 +13,13 @@ from pycoro.io.subsystems.store import StoreCompletion, StoreSubmission, Transac
 
 
 class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
-    def __init__(self, size: int = 100, batch_size: int = 100) -> None:
+    def __init__(self, db: str, migration_scripts: list[str], size: int = 100, batch_size: int = 100) -> None:
         self._sq = Queue[SQE[Submission[StoreSubmission[C]], Completion[StoreCompletion[R]]] | int](size + 1)
-        self._cmd_handlers: dict[type[C], Callable[[C], R]] = {}
+        self._cmd_handlers: dict[type[C], Callable[[Connection, C], R]] = {}
         self._thread: Thread | None = None
         self._batch_size = batch_size
+        self._db = db
+        self._migration_scripts = migration_scripts
 
     @property
     def size(self) -> int:
@@ -31,6 +35,15 @@ class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
         t = Thread(target=self.worker, args=(cq,), daemon=True, name="store-sqlite-worker")
         t.start()
         self._thread = t
+
+        conn = sqlite3.connect(self._db)
+        try:
+            for script in self._migration_scripts:
+                conn.execute(script)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
     def shutdown(self) -> None:
         assert self._thread is not None
@@ -54,14 +67,20 @@ class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
             self._sq.put_nowait(time)
 
     def execute(self, transactions: list[Transaction[C]]) -> list[list[R]]:
-        results: list[list[R]] = []
-        for transaction in transactions:
-            assert len(transaction.cmds) > 0, "expect a command"
-            results.append([self._cmd_handlers[type(cmd)](cmd) for cmd in transaction.cmds])
+        conn = sqlite3.connect(self._db, autocommit=False)
+        try:
+            results: list[list[R]] = []
+            for transaction in transactions:
+                assert len(transaction.cmds) > 0, "expect a command"
+                results.append([self._cmd_handlers[type(cmd)](conn, cmd) for cmd in transaction.cmds])
 
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
         return results
 
-    def add_command_handler(self, cmd: type[C], handler: Callable[[C], R]) -> None:
+    def add_command_handler(self, cmd: type[C], handler: Callable[[Connection, C], R]) -> None:
         assert cmd not in self._cmd_handlers
         self._cmd_handlers[cmd] = handler
 
