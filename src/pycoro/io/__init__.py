@@ -3,13 +3,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Protocol
 
 from pycoro.io.aio import AIO
-from pycoro.io.fio import FIO
 
 if TYPE_CHECKING:
     from pycoro.bus import CQE, SQE
 
 
-__all__ = ["AIO", "FIO"]
+__all__ = ["AIO"]
 
 
 class IO[I, O](Protocol):

@@ -99,6 +99,7 @@ class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
 
             assert len(sqes) <= self._batch_size
             if len(sqes) > 0:
+                assert not isinstance(sqes[0].value.v, Callable)
                 assert sqes[0].value.v.kind == self.kind
                 for cqe in self.process(sqes):
                     cq.put((cqe, sqes[0].value.v.kind))

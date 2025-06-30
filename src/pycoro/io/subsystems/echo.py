@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from queue import Full, Queue, ShutDown
 from threading import Thread
@@ -73,12 +74,15 @@ class EchoSubsystem:
 
     def process(self, sqes: list[SQE[Submission[EchoSubmission], Completion[EchoCompletion]]]) -> list[CQE[Completion[EchoCompletion]]]:
         assert self._workers > 0, "must be at least one worker"
+        assert len(sqes) == 1
+        sqe = sqes[0]
+        assert not isinstance(sqe.value.v, Callable)
+
         return [
             CQE(
                 Completion(EchoCompletion(sqe.value.v.data)),
                 sqe.callback,
             )
-            for sqe in sqes
         ]
 
     def worker(self, cq: Queue[tuple[CQE[Completion[EchoCompletion]], str]]) -> None:
@@ -88,6 +92,7 @@ class EchoSubsystem:
             except ShutDown:
                 break
 
+            assert not isinstance(sqe.value.v, Callable)
             assert sqe.value.v.kind == self.kind
 
             cq.put((self.process([sqe])[0], sqe.value.v.kind))

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from queue import Empty, Queue
-from typing import Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from pycoro.bus import CQE, SQE
 
 
+@runtime_checkable
 class Kind(Protocol):
     @property
     def kind(self) -> str: ...
@@ -25,12 +27,12 @@ class SubSystem(Kind, Protocol):
 
 @dataclass(frozen=True)
 class Submission[I: Kind]:
-    v: I
+    v: I | Callable[[], Any]
 
 
 @dataclass(frozen=True)
 class Completion[O: Kind]:
-    v: O
+    v: O | Any
 
 
 class AIO[I: Kind, O: Kind]:
@@ -41,7 +43,6 @@ class AIO[I: Kind, O: Kind]:
     def attach_subsystem(self, subsystem: SubSystem) -> None:
         assert subsystem.size <= self._cq.maxsize, "subsystem size must be equal or less than the AIO size."
         assert subsystem.kind not in self._subsystems, "subsystem is already registered."
-
         self._subsystems[subsystem.kind] = subsystem
 
     def start(self) -> None:
@@ -60,7 +61,12 @@ class AIO[I: Kind, O: Kind]:
             subsystem.flush(time)
 
     def dispatch(self, sqe: SQE[Submission[I], Completion[O]]) -> None:
-        subsystem = self._subsystems[sqe.value.v.kind]
+        match sqe.value.v:
+            case Callable():
+                subsystem = self._subsystems["function"]
+            case _:
+                subsystem = self._subsystems[sqe.value.v.kind]
+
         if not subsystem.enqueue(sqe):
             sqe.callback(NotImplementedError())
 
@@ -72,8 +78,9 @@ class AIO[I: Kind, O: Kind]:
             except Empty:
                 break
 
-            if not isinstance(cqe.value, Exception):
+            if not isinstance(cqe.value, Exception) and isinstance(cqe.value.v, Kind):
                 assert cqe.value.v.kind == kind
+
             cqes.append(cqe)
             self._cq.task_done()
         return cqes
