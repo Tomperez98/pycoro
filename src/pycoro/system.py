@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from threading import Event, Thread
 from typing import TYPE_CHECKING
 
 from pycoro.scheduler import Computation, Handle, Scheduler
@@ -14,14 +15,27 @@ class Pycoro[I, O]:
         self._io = io
         self._scheduler = Scheduler(self._io, size)
         self._dequeue_size = dequeue_size
+        self._thread = Thread(target=self._loop, daemon=True, name="pycoro-main-thread")
+        self._stop = Event()
+        self._stopped = Event()
 
-    def loop(self) -> None:
+    def start(self) -> None:
+        self._io.start()
+        self._thread.start()
+
+    def _loop(self) -> None:
         while True:
             self.tick(int(time.time() * 1_000))
 
             if self.done():
-                self.shutdown()
+                self._scheduler.shutdown()
+                self._stopped.set()
                 return
+
+    def shutdown(self) -> None:
+        self._stop.set()
+        self._stopped.wait()
+        self._thread.join()
 
     def tick(self, time: int) -> None:
         for cqe in self._io.dequeue(self._dequeue_size):
@@ -31,13 +45,7 @@ class Pycoro[I, O]:
         self._io.flush(time)
 
     def done(self) -> bool:
-        return self._scheduler.size() == 0
-
-    def shutdown(self) -> None:
-        self._scheduler.shutdown()
+        return self._stop.is_set() and self._scheduler.size() == 0
 
     def add(self, c: Computation[I, O] | I) -> Handle[O]:
         return self._scheduler.add(c)
-
-    def start(self) -> None:
-        self._io.start()
