@@ -127,7 +127,6 @@ def _run(seed: int) -> None:
         return
 
     s.shutdown()
-    assert s.done()
 
     failed: int = 0
     for h in handles:

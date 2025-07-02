@@ -11,10 +11,11 @@ if TYPE_CHECKING:
 
 
 class Pycoro[I, O]:
-    def __init__(self, io: IO[I, O], size: int, dequeue_size: int) -> None:
+    def __init__(self, io: IO[I, O], size: int, dequeue_size: int, tick_freq: float = 0.1) -> None:
         self._io = io
         self._scheduler = Scheduler(self._io, size)
         self._dequeue_size = dequeue_size
+        self._tick_freq = tick_freq
         self._thread = Thread(target=self._loop, daemon=True, name="pycoro-main-thread")
         self._stop = Event()
         self._stopped = Event()
@@ -27,7 +28,7 @@ class Pycoro[I, O]:
         while True:
             self.tick(int(time.time() * 1_000))
 
-            if self.done():
+            if self._stop.wait(self._tick_freq) and self._scheduler.size() == 0:
                 self._stopped.set()
                 return
 
@@ -43,9 +44,6 @@ class Pycoro[I, O]:
 
         self._scheduler.run_until_blocked(time)
         self._io.flush(time)
-
-    def done(self) -> bool:
-        return self._stop.wait(0.1) and self._scheduler.size() == 0
 
     def add(self, c: Computation[I, O] | I) -> Handle[O]:
         return self._scheduler.add(c)
