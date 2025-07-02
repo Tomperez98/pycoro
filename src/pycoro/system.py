@@ -21,8 +21,8 @@ class Pycoro[I, O]:
         self._stopped = Event()
 
     def start(self) -> None:
-        self._thread.start()
         self._io.start()
+        self._thread.start()
 
     def _loop(self) -> None:
         while True:

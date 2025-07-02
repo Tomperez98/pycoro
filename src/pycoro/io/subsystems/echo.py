@@ -53,7 +53,7 @@ class EchoSubsystem:
             self._threads.append(t)
 
     def shutdown(self) -> None:
-        assert len(self._threads) > 0
+        assert len(self._threads) == self._workers
         self._sq.shutdown()
         for t in self._threads:
             t.join()

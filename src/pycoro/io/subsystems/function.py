@@ -31,13 +31,12 @@ class FunctionSubsystem:
             self._threads.append(t)
 
     def shutdown(self) -> None:
-        assert len(self._threads) > 0
+        assert len(self._threads) == self._workers
         self._sq.shutdown()
         for t in self._threads:
             t.join()
 
         self._threads.clear()
-        assert len(self._threads) == 0, "at least one worker must be set."
         self._sq.join()
 
     def enqueue(self, sqe: SQE[Submission, Completion]) -> bool:
