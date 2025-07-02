@@ -30,7 +30,6 @@ class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
         return "store"
 
     def start(self, cq: Queue[tuple[CQE[Completion[StoreCompletion[R]]], str]]) -> None:
-        assert self._sq.qsize() == 0
         assert self._thread is None
         t = Thread(target=self.worker, args=(cq,), daemon=True, name="store-sqlite-worker")
         t.start()

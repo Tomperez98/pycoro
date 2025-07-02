@@ -124,15 +124,14 @@ class Scheduler[I: Hashable, O]:
         """Execute computations until blocked."""
         assert len(self._running) == 0
 
-        for _ in range(self._in.qsize()):
+        qsize = self._in.qsize()
+        for _ in range(qsize):
             try:
                 e = self._in.get_nowait()
             except Empty:
                 return
             self._running.appendleft(e)
             self._in.task_done()
-
-        assert self._in.qsize() == 0
 
         self.tick(time)
 

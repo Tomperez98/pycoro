@@ -106,6 +106,7 @@ def _run(seed: int) -> None:
     io.attach_subsystem(store_sqlite_subsystem)
     io.attach_subsystem(function_subsystem)
     s = Pycoro(io, r.randint(1, 100), r.randint(1, 100))
+    s.start()
 
     n_coros = r.randint(1, 100)
     handles: list[Handle[Completion[EchoCompletion | StoreCompletion[Result]]]] = []
@@ -125,7 +126,6 @@ def _run(seed: int) -> None:
     except Full:
         return
 
-    s.start()
     s.shutdown()
     assert s.done()
 

@@ -20,15 +20,14 @@ class Pycoro[I, O]:
         self._stopped = Event()
 
     def start(self) -> None:
-        self._io.start()
         self._thread.start()
+        self._io.start()
 
     def _loop(self) -> None:
         while True:
             self.tick(int(time.time() * 1_000))
 
             if self.done():
-                self._scheduler.shutdown()
                 self._stopped.set()
                 return
 
@@ -36,6 +35,7 @@ class Pycoro[I, O]:
         self._stop.set()
         self._stopped.wait()
         self._thread.join()
+        self._scheduler.shutdown()
 
     def tick(self, time: int) -> None:
         for cqe in self._io.dequeue(self._dequeue_size):
@@ -45,7 +45,7 @@ class Pycoro[I, O]:
         self._io.flush(time)
 
     def done(self) -> bool:
-        return self._stop.is_set() and self._scheduler.size() == 0
+        return self._stop.wait(0.1) and self._scheduler.size() == 0
 
     def add(self, c: Computation[I, O] | I) -> Handle[O]:
         return self._scheduler.add(c)
