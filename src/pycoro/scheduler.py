@@ -27,17 +27,6 @@ type _Yieldable[I, O] = Computation[I, O] | Promise[O] | Time | I
 type Computation[I, O] = Generator[_Yieldable[I, O], Any, O]
 
 
-class Handle[O]:
-    """Handle for computation result."""
-
-    def __init__(self, f: Future[O]) -> None:
-        self._f = f
-
-    def result(self, timeout: float | None = None) -> O:
-        """Await for computation result."""
-        return self._f.result(timeout)
-
-
 # internal classes
 class _FV[O]:
     def __init__(self, v: O | Exception) -> None:
@@ -104,11 +93,11 @@ class Scheduler[I: Hashable, O]:
         self._p_to_comp: dict[Promise[O], _IPC[I, O]] = {}
         self._comp_to_f: dict[_IPC[I, O], Future[O]] = {}
 
-    def add(self, c: Computation[I, O] | I) -> Handle[O]:
+    def add(self, c: Computation[I, O] | I) -> Future[O]:
         """Schedule computation."""
         f = Future[O]()
         self._in.put_nowait((_IPC(c), f))
-        return Handle(f)
+        return f
 
     def shutdown(self) -> None:
         """Shutdown scheduler."""

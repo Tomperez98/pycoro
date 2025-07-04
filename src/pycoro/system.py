@@ -4,9 +4,11 @@ import time
 from threading import Event, Thread
 from typing import TYPE_CHECKING
 
-from pycoro.scheduler import Computation, Handle, Scheduler
+from pycoro.scheduler import Computation, Scheduler
 
 if TYPE_CHECKING:
+    from concurrent.futures import Future
+
     from pycoro.io import IO
 
 
@@ -19,31 +21,37 @@ class Pycoro[I, O]:
         self._thread = Thread(target=self._loop, daemon=True, name="pycoro-main-thread")
         self._stop = Event()
         self._stopped = Event()
+        self._stopped.set()
 
-    def start(self) -> None:
-        self._io.start()
-        self._thread.start()
-
-    def _loop(self) -> None:
-        while True:
-            self.tick(int(time.time() * 1_000))
-
-            if self._stop.wait(self._tick_freq) and self._scheduler.size() == 0:
-                self._stopped.set()
-                return
+    def add(self, c: Computation[I, O] | I) -> Future[O]:
+        self._start()
+        return self._scheduler.add(c)
 
     def shutdown(self) -> None:
         self._stop.set()
         self._stopped.wait()
         self._thread.join()
         self._scheduler.shutdown()
+        self._stopped.set()
+        self._stop.clear()
 
-    def tick(self, time: int) -> None:
+    def _start(self) -> None:
+        if self._stopped.is_set():
+            self._stopped.clear()
+            self._io.start()
+            self._thread.start()
+
+    def _loop(self) -> None:
+        while True:
+            self._tick(int(time.time() * 1_000))
+
+            if self._stop.wait(self._tick_freq) and self._scheduler.size() == 0:
+                self._stopped.set()
+                return
+
+    def _tick(self, time: int) -> None:
         for cqe in self._io.dequeue(self._dequeue_size):
             cqe.callback(cqe.value)
 
         self._scheduler.run_until_blocked(time)
         self._io.flush(time)
-
-    def add(self, c: Computation[I, O] | I) -> Handle[O]:
-        return self._scheduler.add(c)

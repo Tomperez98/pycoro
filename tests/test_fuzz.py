@@ -15,9 +15,9 @@ from pycoro.io.subsystems.store.sqlite import StoreSqliteSubsystem
 from pycoro.scheduler import Time
 
 if TYPE_CHECKING:
+    from concurrent.futures import Future
     from sqlite3 import Connection
 
-    from pycoro.scheduler import Handle
 
 type Command = ReadCommand
 
@@ -105,11 +105,10 @@ def _run(seed: int) -> None:
     io.attach_subsystem(echo_subsystem)
     io.attach_subsystem(store_sqlite_subsystem)
     io.attach_subsystem(function_subsystem)
-    s = Pycoro(io, r.randint(1, 100), r.randint(1, 100))
-    s.start()
+    s = Pycoro(io, r.randint(1, 100), r.randint(1, 100), r.random() * 2)
 
     n_coros = r.randint(1, 100)
-    handles: list[Handle[Completion[EchoCompletion | StoreCompletion[Result]]]] = []
+    handles: list[Future[Completion[EchoCompletion | StoreCompletion[Result]]]] = []
     try:
         for _ in range(n_coros):
             match r.randint(0, 3):
