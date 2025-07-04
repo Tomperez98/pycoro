@@ -9,7 +9,7 @@ from threading import Thread
 
 from pycoro.bus import CQE, SQE
 from pycoro.io.aio import Completion, Submission
-from pycoro.io.subsystems.store import StoreCompletion, StoreSubmission, Transaction, collect, process
+from pycoro.io.aio.subsystems.store import StoreCompletion, StoreSubmission, Transaction, collect, process
 
 
 class StoreSqliteSubsystem[C: Hashable, R: Hashable]:

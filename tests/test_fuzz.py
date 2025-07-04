@@ -8,10 +8,10 @@ from typing import TYPE_CHECKING
 from pycoro import Computation, Promise, Pycoro
 from pycoro.io import AIO
 from pycoro.io.aio import Completion, Submission
-from pycoro.io.subsystems.echo import EchoCompletion, EchoSubmission, EchoSubsystem
-from pycoro.io.subsystems.function import FunctionSubsystem
-from pycoro.io.subsystems.store import StoreCompletion, StoreSubmission, Transaction
-from pycoro.io.subsystems.store.sqlite import StoreSqliteSubsystem
+from pycoro.io.aio.subsystems.echo import EchoCompletion, EchoSubmission, EchoSubsystem
+from pycoro.io.aio.subsystems.function import FunctionSubsystem
+from pycoro.io.aio.subsystems.store import StoreCompletion, StoreSubmission, Transaction
+from pycoro.io.aio.subsystems.store.sqlite import StoreSqliteSubsystem
 from pycoro.scheduler import Time
 
 if TYPE_CHECKING:
