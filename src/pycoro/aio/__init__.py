@@ -17,12 +17,12 @@ class Kind(Protocol):
 class SubSystem(Kind, Protocol):
     @property
     def size(self) -> int: ...
-    def start(self, cq: Queue[tuple[CQE[Completion], str]]) -> None: ...
+    def start(self) -> None: ...
     def shutdown(self) -> None: ...
     def flush(self, time: int) -> None: ...
-    def enqueue(self, sqe: SQE[Submission, Completion]) -> bool: ...
-    def process(self, sqes: list[SQE[Submission, Completion]]) -> list[CQE[Completion]]: ...
-    def worker(self, cq: Queue[tuple[CQE[Completion], str]]) -> None: ...
+    def enqueue(self, sqe: SQE) -> bool: ...
+    def process(self, sqes: list[SQE]) -> list[CQE]: ...
+    def worker(self) -> None: ...
 
 
 @dataclass(frozen=True)
@@ -35,9 +35,19 @@ class Completion[O: Kind]:
     v: O | Any
 
 
-class AIO[I: Kind, O: Kind]:
+class AIO(Protocol):
+    def attach_subsystem(self, subsystem: SubSystem) -> None: ...
+    def start(self) -> None: ...
+    def shutdown(self) -> None: ...
+    def flush(self, time: int) -> None: ...
+    def dispatch(self, sqe: SQE) -> None: ...
+    def dequeue(self, n: int) -> list[CQE]: ...
+    def enqueue(self, cqe: tuple[CQE, str]) -> None: ...
+
+
+class AIOSystem:
     def __init__(self, size: int) -> None:
-        self._cq = Queue[tuple[CQE[Completion[O]], str]](size)
+        self._cq = Queue[tuple[CQE, str]](size)
         self._subsystems: dict[str, SubSystem] = {}
 
     def attach_subsystem(self, subsystem: SubSystem) -> None:
@@ -47,7 +57,7 @@ class AIO[I: Kind, O: Kind]:
 
     def start(self) -> None:
         for subsystem in self._subsystems.values():
-            subsystem.start(self._cq)
+            subsystem.start()
 
     def shutdown(self) -> None:
         for subsystem in self._subsystems.values():
@@ -60,7 +70,7 @@ class AIO[I: Kind, O: Kind]:
         for subsystem in self._subsystems.values():
             subsystem.flush(time)
 
-    def dispatch(self, sqe: SQE[Submission[I], Completion[O]]) -> None:
+    def dispatch(self, sqe: SQE) -> None:
         match sqe.value.v:
             case Callable():
                 subsystem = self._subsystems["function"]
@@ -70,8 +80,8 @@ class AIO[I: Kind, O: Kind]:
         if not subsystem.enqueue(sqe):
             sqe.callback(NotImplementedError())
 
-    def dequeue(self, n: int) -> list[CQE[Completion[O]]]:
-        cqes: list[CQE[Completion[O]]] = []
+    def dequeue(self, n: int) -> list[CQE]:
+        cqes: list[CQE] = []
         for _ in range(n):
             try:
                 cqe, kind = self._cq.get_nowait()
@@ -84,3 +94,6 @@ class AIO[I: Kind, O: Kind]:
             cqes.append(cqe)
             self._cq.task_done()
         return cqes
+
+    def enqueue(self, cqe: tuple[CQE, str]) -> None:
+        self._cq.put(cqe)

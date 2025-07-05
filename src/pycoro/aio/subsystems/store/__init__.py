@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, assert_never
 
 from pycoro import CQE, SQE
-from pycoro.io.aio import Completion, Submission
+from pycoro.aio import Completion
 
 if TYPE_CHECKING:
     from queue import Queue
@@ -40,7 +40,7 @@ class StoreSubsystem[C: Hashable, R: Hashable](Protocol):
     def execute(self, transactions: list[Transaction[C]]) -> list[list[R]]: ...
 
 
-def process(store: StoreSubsystem, sqes: list[SQE[Submission[StoreSubmission], Completion[StoreCompletion]]]) -> list[CQE[Completion[StoreCompletion]]]:
+def process(store: StoreSubsystem, sqes: list[SQE]) -> list[CQE]:
     transactions: list[Transaction] = []
 
     for sqe in sqes:
@@ -56,10 +56,10 @@ def process(store: StoreSubsystem, sqes: list[SQE[Submission[StoreSubmission], C
     return [CQE(result if isinstance(result, Exception) else Completion(StoreCompletion(result[i])), sqe.callback) for i, sqe in enumerate(sqes)]
 
 
-def collect(c: Queue[SQE[Submission[StoreSubmission], Completion[StoreCompletion]] | int], n: int) -> list[SQE[Submission[StoreSubmission], Completion[StoreCompletion]]]:
+def collect(c: Queue[SQE | int], n: int) -> list[SQE]:
     assert n > 0, "batch size must be greater than 0"
 
-    batch: list[SQE[Submission[StoreSubmission], Completion[StoreCompletion]]] = []
+    batch: list[SQE] = []
     for _ in range(n):
         sqe = c.get()
 

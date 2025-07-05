@@ -4,18 +4,19 @@ import time
 from threading import Event, Thread
 from typing import TYPE_CHECKING
 
+from pycoro.aio import Kind
 from pycoro.scheduler import Computation, Scheduler
 
 if TYPE_CHECKING:
     from concurrent.futures import Future
 
-    from pycoro.io import IO
+    from pycoro.aio import AIO
 
 
-class Pycoro[I, O]:
-    def __init__(self, io: IO[I, O], size: int, dequeue_size: int, tick_freq: float = 0.1) -> None:
-        self._io = io
-        self._scheduler = Scheduler(self._io, size)
+class Pycoro[I: Kind, O: Kind]:
+    def __init__(self, aio: AIO, size: int, dequeue_size: int, tick_freq: float = 0.1) -> None:
+        self._aio = aio
+        self._scheduler = Scheduler(self._aio, size)
         self._dequeue_size = dequeue_size
         self._tick_freq = tick_freq
         self._thread = Thread(target=self._loop, daemon=True, name="pycoro-main-thread")
@@ -38,7 +39,7 @@ class Pycoro[I, O]:
     def _start(self) -> None:
         if self._stopped.is_set():
             self._stopped.clear()
-            self._io.start()
+            self._aio.start()
             self._thread.start()
 
     def _loop(self) -> None:
@@ -50,8 +51,8 @@ class Pycoro[I, O]:
                 return
 
     def _tick(self, time: int) -> None:
-        for cqe in self._io.dequeue(self._dequeue_size):
+        for cqe in self._aio.dequeue(self._dequeue_size):
             cqe.callback(cqe.value)
 
         self._scheduler.run_until_blocked(time)
-        self._io.flush(time)
+        self._aio.flush(time)

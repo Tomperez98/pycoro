@@ -6,12 +6,11 @@ from queue import Full
 from typing import TYPE_CHECKING
 
 from pycoro import Computation, Promise, Pycoro
-from pycoro.io import AIO
-from pycoro.io.aio import Completion, Submission
-from pycoro.io.aio.subsystems.echo import EchoCompletion, EchoSubmission, EchoSubsystem
-from pycoro.io.aio.subsystems.function import FunctionSubsystem
-from pycoro.io.aio.subsystems.store import StoreCompletion, StoreSubmission, Transaction
-from pycoro.io.aio.subsystems.store.sqlite import StoreSqliteSubsystem
+from pycoro.aio import AIOSystem, Completion, Submission
+from pycoro.aio.subsystems.echo import EchoCompletion, EchoSubmission, EchoSubsystem
+from pycoro.aio.subsystems.function import FunctionSubsystem
+from pycoro.aio.subsystems.store import StoreCompletion, StoreSubmission, Transaction
+from pycoro.aio.subsystems.store.sqlite import StoreSqliteSubsystem
 from pycoro.scheduler import Time
 
 if TYPE_CHECKING:
@@ -95,17 +94,17 @@ def _run(seed: int) -> None:
     if function_subsystem_size > io_size:
         return
 
-    echo_subsystem = EchoSubsystem(echo_subsystem_size, r.randint(1, 3))
-    store_sqlite_subsystem = StoreSqliteSubsystem(":memory:", ["CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, value INTEGER)"], store_sqlite_subsystem_size, r.randint(1, 100))
+    aio = AIOSystem(io_size)
+
+    echo_subsystem = EchoSubsystem(aio, echo_subsystem_size, r.randint(1, 3))
+    store_sqlite_subsystem = StoreSqliteSubsystem(aio, ":memory:", ["CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, value INTEGER)"], store_sqlite_subsystem_size, r.randint(1, 100))
     store_sqlite_subsystem.add_command_handler(ReadCommand, read_handler)
-    function_subsystem = FunctionSubsystem(function_subsystem_size, r.randint(1, 3))
+    function_subsystem = FunctionSubsystem(aio, function_subsystem_size, r.randint(1, 3))
 
-    io = AIO[EchoSubmission | StoreSubmission[Command], EchoCompletion | StoreCompletion[Result]](io_size)
-
-    io.attach_subsystem(echo_subsystem)
-    io.attach_subsystem(store_sqlite_subsystem)
-    io.attach_subsystem(function_subsystem)
-    s = Pycoro(io, r.randint(1, 100), r.randint(1, 100), r.random() * 2)
+    aio.attach_subsystem(echo_subsystem)
+    aio.attach_subsystem(store_sqlite_subsystem)
+    aio.attach_subsystem(function_subsystem)
+    s = Pycoro(aio, r.randint(1, 100), r.randint(1, 100), r.random() * 2)
 
     n_coros = r.randint(1, 100)
     handles: list[Future[Completion[EchoCompletion | StoreCompletion[Result]]]] = []

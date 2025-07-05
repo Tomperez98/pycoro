@@ -6,15 +6,19 @@ from collections.abc import Callable, Hashable
 from queue import Full, Queue, ShutDown
 from sqlite3 import Connection
 from threading import Thread
+from typing import TYPE_CHECKING
 
+from pycoro.aio.subsystems.store import Transaction, collect, process
 from pycoro.bus import CQE, SQE
-from pycoro.io.aio import Completion, Submission
-from pycoro.io.aio.subsystems.store import StoreCompletion, StoreSubmission, Transaction, collect, process
+
+if TYPE_CHECKING:
+    from pycoro.aio import AIO
 
 
 class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
-    def __init__(self, db: str, migration_scripts: list[str], size: int = 100, batch_size: int = 100) -> None:
-        self._sq = Queue[SQE[Submission[StoreSubmission[C]], Completion[StoreCompletion[R]]] | int](size + 1)
+    def __init__(self, aio: AIO, db: str, migration_scripts: list[str], size: int = 100, batch_size: int = 100) -> None:
+        self._aio = aio
+        self._sq = Queue[SQE | int](size + 1)
         self._cmd_handlers: dict[type[C], Callable[[Connection, C], R]] = {}
         self._thread: Thread | None = None
         self._batch_size = batch_size
@@ -29,9 +33,9 @@ class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
     def kind(self) -> str:
         return "store"
 
-    def start(self, cq: Queue[tuple[CQE[Completion[StoreCompletion[R]]], str]]) -> None:
+    def start(self) -> None:
         assert self._thread is None
-        t = Thread(target=self.worker, args=(cq,), daemon=True, name="store-sqlite-worker")
+        t = Thread(target=self.worker, daemon=True, name="store-sqlite-worker")
         t.start()
         self._thread = t
 
@@ -54,14 +58,14 @@ class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
         self._thread = None
         self._sq.join()
 
-    def enqueue(self, sqe: SQE[Submission[StoreSubmission[C]], Completion[StoreCompletion[R]]]) -> bool:
+    def enqueue(self, sqe: SQE) -> bool:
         try:
             self._sq.put_nowait(sqe)
         except Full:
             return False
         return True
 
-    def process(self, sqes: list[SQE[Submission[StoreSubmission[C]], Completion[StoreCompletion[R]]]]) -> list[CQE[Completion[StoreCompletion[R]]]]:
+    def process(self, sqes: list[SQE]) -> list[CQE]:
         return process(self, sqes)
 
     def flush(self, time: int) -> None:
@@ -89,7 +93,7 @@ class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
         assert cmd not in self._cmd_handlers
         self._cmd_handlers[cmd] = handler
 
-    def worker(self, cq: Queue[tuple[CQE[Completion[StoreCompletion[R]]], str]]) -> None:
+    def worker(self) -> None:
         while True:
             try:
                 sqes = collect(self._sq, self._batch_size)
@@ -101,4 +105,4 @@ class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
                 assert not isinstance(sqes[0].value.v, Callable)
                 assert sqes[0].value.v.kind == self.kind
                 for cqe in self.process(sqes):
-                    cq.put((cqe, sqes[0].value.v.kind))
+                    self._aio.enqueue((cqe, self.kind))

@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import contextlib
 from collections import deque
-from collections.abc import Generator, Hashable
+from collections.abc import Generator
 from concurrent.futures import Future
 from queue import Empty, Queue
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
+from pycoro.aio import Kind, Submission
 from pycoro.bus import SQE
 
 if TYPE_CHECKING:
-    from pycoro import io
+    from pycoro import aio
 
 
 # commands.
@@ -82,9 +83,9 @@ class _IPC[I, O]:
                 return yielded
 
 
-class Scheduler[I: Hashable, O]:
-    def __init__(self, io: io.IO[I, O], size: int) -> None:
-        self._io = io
+class Scheduler[I: Kind, O: Kind]:
+    def __init__(self, aio: aio.AIO, size: int) -> None:
+        self._aio = aio
         self._in = Queue[tuple[_IPC[I, O], Future[O]]](size)
 
         self._running: deque[_IPC[I, O] | tuple[_IPC[I, O], Future[O]]] = deque()
@@ -101,7 +102,7 @@ class Scheduler[I: Hashable, O]:
 
     def shutdown(self) -> None:
         """Shutdown scheduler."""
-        self._io.shutdown()
+        self._aio.shutdown()
         self._in.shutdown()
         self._in.join()
         assert len(self._running) == 0
@@ -182,7 +183,8 @@ class Scheduler[I: Hashable, O]:
                         child_comp = _IPC[I, O](yielded)
                         promise = Promise()
                         self._p_to_comp[promise] = child_comp
-                        self._io.dispatch(SQE(cast("I", yielded), lambda r, comp=child_comp: self._set(comp, _FV(r))))
+                        Submission(yielded)
+                        self._aio.dispatch(SQE(yielded, lambda r, comp=child_comp: self._set(comp, _FV(r))))
 
                         comp.next = promise
                         self._running.appendleft(comp)
@@ -191,7 +193,7 @@ class Scheduler[I: Hashable, O]:
                 assert comp.next is None
                 assert comp not in self._awaiting
 
-                self._io.dispatch(SQE(comp.coro, lambda r, comp=comp: self._set(comp, _FV(r))))
+                self._aio.dispatch(SQE(comp.coro, lambda r, comp=comp: self._set(comp, _FV(r))))
                 self._awaiting[comp] = None
         return True
 
