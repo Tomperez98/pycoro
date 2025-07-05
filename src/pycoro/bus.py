@@ -6,14 +6,16 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-
-@dataclass(frozen=True)
-class SQE:
-    value: Any
-    callback: Callable[[Any | Exception], None]
+    from pycoro.aio import Kind
 
 
 @dataclass(frozen=True)
-class CQE:
-    value: Any | Exception
-    callback: Callable[[Any | Exception], None]
+class SQE[I: Kind, O: Kind]:
+    value: I | Callable[[], Any]
+    callback: Callable[[O | Any | Exception], None]
+
+
+@dataclass(frozen=True)
+class CQE[O: Kind]:
+    value: O | Any | Exception
+    callback: Callable[[O | Any | Exception], None]

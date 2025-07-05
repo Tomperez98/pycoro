@@ -7,7 +7,7 @@ from concurrent.futures import Future
 from queue import Empty, Queue
 from typing import TYPE_CHECKING, Any
 
-from pycoro.aio import Kind, Submission
+from pycoro.aio import Kind
 from pycoro.bus import SQE
 
 if TYPE_CHECKING:
@@ -29,12 +29,12 @@ type Computation[I, O] = Generator[_Yieldable[I, O], Any, O]
 
 
 # internal classes
-class _FV[O]:
-    def __init__(self, v: O | Exception) -> None:
+class _FV[O: Kind]:
+    def __init__(self, v: O | Any | Exception) -> None:
         self.v = v
 
 
-class _IPC[I, O]:
+class _IPC[I: Kind, O: Kind]:
     def __init__(
         self,
         coro: Computation[I, O] | I,
@@ -47,8 +47,10 @@ class _IPC[I, O]:
         self._pend: list[Promise[O]] = []
         self._final: _FV[O] | None = None
 
-    def send(self, v: Promise[O] | int | O | Exception | None) -> _Yieldable[I, O] | _FV[O]:
-        assert isinstance(self.coro, Generator), "can only run send in a computation that's a coroutine"
+    def send(self) -> _Yieldable[I, O] | _FV[O]:
+        assert isinstance(self.coro, Generator), (
+            "can only run send in a computation that's a coroutine"
+        )
 
         if self._final is not None:
             if self._pend:
@@ -92,11 +94,11 @@ class Scheduler[I: Kind, O: Kind]:
         self._awaiting: dict[_IPC[I, O], _IPC[I, O] | None] = {}
 
         self._p_to_comp: dict[Promise[O], _IPC[I, O]] = {}
-        self._comp_to_f: dict[_IPC[I, O], Future[O]] = {}
+        self._comp_to_f: dict[_IPC[I, O], Future[O | Any]] = {}
 
-    def add(self, c: Computation[I, O] | I) -> Future[O]:
+    def add(self, c: Computation[I, O] | I) -> Future[O | Any]:
         """Schedule computation."""
-        f = Future[O]()
+        f = Future[O | Any]()
         self._in.put_nowait((_IPC(c), f))
         return f
 
@@ -151,7 +153,7 @@ class Scheduler[I: Kind, O: Kind]:
 
         match comp.coro:
             case Generator():
-                yielded = comp.send(comp.next)
+                yielded = comp.send()
 
                 match yielded:
                     case Promise():
@@ -183,8 +185,9 @@ class Scheduler[I: Kind, O: Kind]:
                         child_comp = _IPC[I, O](yielded)
                         promise = Promise()
                         self._p_to_comp[promise] = child_comp
-                        Submission(yielded)
-                        self._aio.dispatch(SQE(yielded, lambda r, comp=child_comp: self._set(comp, _FV(r))))
+                        self._aio.dispatch(
+                            SQE(yielded, lambda r, comp=child_comp: self._set(comp, _FV(r))),
+                        )
 
                         comp.next = promise
                         self._running.appendleft(comp)

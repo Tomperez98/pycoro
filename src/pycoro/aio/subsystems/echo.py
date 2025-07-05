@@ -4,10 +4,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from queue import Full, Queue, ShutDown
 from threading import Thread
+from typing import TYPE_CHECKING
 
 from pycoro import CQE
-from pycoro.aio import AIO, Completion
 from pycoro.bus import SQE
+
+if TYPE_CHECKING:
+    from pycoro.aio import AIO
 
 
 # Submission
@@ -31,9 +34,14 @@ class EchoCompletion:
 
 
 class EchoSubsystem:
-    def __init__(self, aio: AIO, size: int = 100, workers: int = 1) -> None:
+    def __init__(
+        self,
+        aio: AIO[EchoSubmission, EchoCompletion],
+        size: int = 100,
+        workers: int = 1,
+    ) -> None:
         self._aio = aio
-        self._sq = Queue[SQE](size)
+        self._sq = Queue[SQE[EchoSubmission, EchoCompletion]](size)
         self._workers = workers
         self._threads: list[Thread] = []
 
@@ -73,17 +81,17 @@ class EchoSubsystem:
     def flush(self, time: int) -> None:
         return
 
-    def process(self, sqes: list[SQE]) -> list[CQE]:
+    def process(self, sqes: list[SQE[EchoSubmission, EchoCompletion]]) -> list[CQE[EchoCompletion]]:
         assert self._workers > 0, "must be at least one worker"
         assert len(sqes) == 1
         sqe = sqes[0]
-        assert not isinstance(sqe.value.v, Callable)
+        assert not isinstance(sqe.value, Callable)
 
         return [
             CQE(
-                Completion(EchoCompletion(sqe.value.v.data)),
+                EchoCompletion(sqe.value.data),
                 sqe.callback,
-            )
+            ),
         ]
 
     def worker(self) -> None:
@@ -93,8 +101,8 @@ class EchoSubsystem:
             except ShutDown:
                 break
 
-            assert not isinstance(sqe.value.v, Callable)
-            assert sqe.value.v.kind == self.kind
+            assert not isinstance(sqe.value, Callable)
+            assert sqe.value.kind == self.kind
 
             self._aio.enqueue((self.process([sqe])[0], self.kind))
             self._sq.task_done()

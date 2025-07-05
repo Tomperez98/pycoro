@@ -8,7 +8,13 @@ from sqlite3 import Connection
 from threading import Thread
 from typing import TYPE_CHECKING
 
-from pycoro.aio.subsystems.store import Transaction, collect, process
+from pycoro.aio.subsystems.store import (
+    StoreCompletion,
+    StoreSubmission,
+    Transaction,
+    collect,
+    process,
+)
 from pycoro.bus import CQE, SQE
 
 if TYPE_CHECKING:
@@ -16,9 +22,16 @@ if TYPE_CHECKING:
 
 
 class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
-    def __init__(self, aio: AIO, db: str, migration_scripts: list[str], size: int = 100, batch_size: int = 100) -> None:
+    def __init__(
+        self,
+        aio: AIO[StoreSubmission, StoreCompletion],
+        db: str,
+        migration_scripts: list[str],
+        size: int = 100,
+        batch_size: int = 100,
+    ) -> None:
         self._aio = aio
-        self._sq = Queue[SQE | int](size + 1)
+        self._sq = Queue[SQE[StoreSubmission, StoreCompletion] | int](size + 1)
         self._cmd_handlers: dict[type[C], Callable[[Connection, C], R]] = {}
         self._thread: Thread | None = None
         self._batch_size = batch_size
@@ -58,7 +71,7 @@ class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
         self._thread = None
         self._sq.join()
 
-    def enqueue(self, sqe: SQE) -> bool:
+    def enqueue(self, sqe: SQE[StoreSubmission, StoreCompletion]) -> bool:
         try:
             self._sq.put_nowait(sqe)
         except Full:
@@ -78,7 +91,9 @@ class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
             results: list[list[R]] = []
             for transaction in transactions:
                 assert len(transaction.cmds) > 0, "expect a command"
-                results.append([self._cmd_handlers[type(cmd)](conn, cmd) for cmd in transaction.cmds])
+                results.append(
+                    [self._cmd_handlers[type(cmd)](conn, cmd) for cmd in transaction.cmds],
+                )
 
             conn.commit()
         except Exception:
@@ -102,7 +117,7 @@ class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
 
             assert len(sqes) <= self._batch_size
             if len(sqes) > 0:
-                assert not isinstance(sqes[0].value.v, Callable)
-                assert sqes[0].value.v.kind == self.kind
+                assert not isinstance(sqes[0].value, Callable)
+                assert sqes[0].value.kind == self.kind
                 for cqe in self.process(sqes):
                     self._aio.enqueue((cqe, self.kind))

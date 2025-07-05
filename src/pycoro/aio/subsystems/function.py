@@ -3,9 +3,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from queue import Full, Queue, ShutDown
 from threading import Thread
+from typing import TYPE_CHECKING
 
-from pycoro.aio import AIO, Completion
 from pycoro.bus import CQE, SQE
+
+if TYPE_CHECKING:
+    from pycoro.aio import AIO
 
 
 class FunctionSubsystem:
@@ -54,8 +57,8 @@ class FunctionSubsystem:
         assert self._workers > 0, "must be at least one worker"
         assert len(sqes) == 1
         sqe = sqes[0]
-        assert isinstance(sqe.value.v, Callable)
-        return [CQE(Completion(sqe.value.v()), sqe.callback)]
+        assert isinstance(sqe.value, Callable)
+        return [CQE(sqe.value(), sqe.callback)]
 
     def worker(self) -> None:
         while True:
@@ -64,7 +67,7 @@ class FunctionSubsystem:
             except ShutDown:
                 break
 
-            assert isinstance(sqe.value.v, Callable)
+            assert isinstance(sqe.value, Callable)
 
             self._aio.enqueue((self.process([sqe])[0], "function"))
             self._sq.task_done()

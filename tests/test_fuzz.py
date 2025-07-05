@@ -6,7 +6,7 @@ from queue import Full
 from typing import TYPE_CHECKING
 
 from pycoro import Computation, Promise, Pycoro
-from pycoro.aio import AIOSystem, Completion, Submission
+from pycoro.aio import AIOSystem
 from pycoro.aio.subsystems.echo import EchoCompletion, EchoSubmission, EchoSubsystem
 from pycoro.aio.subsystems.function import FunctionSubsystem
 from pycoro.aio.subsystems.store import StoreCompletion, StoreSubmission, Transaction
@@ -39,35 +39,36 @@ class ReadResult:
     id: int
 
 
-def foo(n: int) -> Computation[Submission[EchoSubmission | StoreSubmission[Command]], Completion[EchoCompletion | StoreCompletion[Result]]]:
+def foo(
+    n: int,
+) -> Computation[StoreSubmission[Command], StoreCompletion[Result]]:
     p: Promise | None = None
     for _ in range(n):
-        p = yield Submission(StoreSubmission(Transaction([ReadCommand(n) for _ in range(n)])))
+        p = yield StoreSubmission(Transaction([ReadCommand(n) for _ in range(n)]))
 
     assert p is not None
 
-    v: Completion = yield p
+    v: StoreCompletion = yield p
 
-    assert isinstance(v, StoreCompletion)
     assert len(v.results) == n
     return v
 
 
-def bar(n: int, data: str) -> Computation[Submission[EchoSubmission | StoreSubmission[Command]], Completion[EchoCompletion | StoreCompletion[Result]]]:
+def bar(n: int, data: str) -> Computation[EchoSubmission, EchoCompletion]:
     p: Promise | None = None
     for _ in range(n):
-        p = yield Submission[EchoSubmission | StoreSubmission[Command]](EchoSubmission(data))
+        p = yield EchoSubmission(data)
     assert p is not None
     v = yield p
-    return Completion(EchoCompletion(v))
+    return EchoCompletion(v)
 
 
-def baz(*, recursive: bool = True) -> Computation[Submission, Completion]:
+def baz(*, recursive: bool = True) -> Computation:
     if not recursive:
-        return Completion("I'm done")
-    p = yield Submission(lambda: "hi")
-    v: Completion = yield p
-    assert v.v == "hi"
+        return "I'm done"
+    p = yield lambda: "hi"
+    v: str = yield p
+    assert v == "hi"
 
     now = yield Time()
     assert now >= 0
@@ -97,7 +98,13 @@ def _run(seed: int) -> None:
     aio = AIOSystem(io_size)
 
     echo_subsystem = EchoSubsystem(aio, echo_subsystem_size, r.randint(1, 3))
-    store_sqlite_subsystem = StoreSqliteSubsystem(aio, ":memory:", ["CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, value INTEGER)"], store_sqlite_subsystem_size, r.randint(1, 100))
+    store_sqlite_subsystem = StoreSqliteSubsystem(
+        aio,
+        ":memory:",
+        ["CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, value INTEGER)"],
+        store_sqlite_subsystem_size,
+        r.randint(1, 100),
+    )
     store_sqlite_subsystem.add_command_handler(ReadCommand, read_handler)
     function_subsystem = FunctionSubsystem(aio, function_subsystem_size, r.randint(1, 3))
 
@@ -107,7 +114,7 @@ def _run(seed: int) -> None:
     s = Pycoro(aio, r.randint(1, 100), r.randint(1, 100), r.random() * 2)
 
     n_coros = r.randint(1, 100)
-    handles: list[Future[Completion[EchoCompletion | StoreCompletion[Result]]]] = []
+    handles: list[Future[EchoCompletion | StoreCompletion[Result]]] = []
     try:
         for _ in range(n_coros):
             match r.randint(0, 3):
@@ -118,7 +125,7 @@ def _run(seed: int) -> None:
                 case 2:
                     handles.append(s.add(baz()))
                 case 3:
-                    handles.append(s.add(Submission(lambda: "hi")))
+                    handles.append(s.add(lambda: "hi"))
                 case _:
                     raise NotImplementedError
     except Full:
