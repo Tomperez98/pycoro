@@ -59,8 +59,9 @@ def bar(n: int, data: str) -> Computation[EchoSubmission, EchoCompletion]:
     for _ in range(n):
         p = yield EchoSubmission(data)
     assert p is not None
-    v = yield p
-    return EchoCompletion(v)
+    v: EchoCompletion = yield p
+    assert v.data == data
+    return v
 
 
 def baz(*, recursive: bool = True) -> Computation:
@@ -143,6 +144,7 @@ def _run(seed: int) -> None:
             pass
 
     assert failed == 0
+
     return
 
 

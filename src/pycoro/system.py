@@ -44,13 +44,13 @@ class Pycoro[I: Kind, O: Kind]:
 
     def _loop(self) -> None:
         while True:
-            self._tick(int(time.time() * 1_000))
+            self.tick(int(time.time() * 1_000))
 
             if self._stop.wait(self._tick_freq) and self._scheduler.size() == 0:
                 self._stopped.set()
                 return
 
-    def _tick(self, time: int) -> None:
+    def tick(self, time: int) -> None:
         for cqe in self._aio.dequeue(self._dequeue_size):
             cqe.callback(cqe.value)
 

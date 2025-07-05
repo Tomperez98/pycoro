@@ -55,7 +55,6 @@ class FunctionSubsystem:
 
     def process(self, sqes: list[SQE]) -> list[CQE]:
         assert self._workers > 0, "must be at least one worker"
-        assert len(sqes) == 1
         sqe = sqes[0]
         assert isinstance(sqe.value, Callable)
         return [CQE(sqe.value(), sqe.callback)]

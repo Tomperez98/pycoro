@@ -83,7 +83,6 @@ class EchoSubsystem:
 
     def process(self, sqes: list[SQE[EchoSubmission, EchoCompletion]]) -> list[CQE[EchoCompletion]]:
         assert self._workers > 0, "must be at least one worker"
-        assert len(sqes) == 1
         sqe = sqes[0]
         assert not isinstance(sqe.value, Callable)
 
