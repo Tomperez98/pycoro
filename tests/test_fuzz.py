@@ -26,17 +26,12 @@ class ReadCommand:
     id: int
 
 
-def read_handler(conn: Connection, cmd: ReadCommand) -> ReadResult:
+def read_handler(conn: Connection, cmd: ReadCommand) -> int:
     conn.execute("INSERT INTO users (value) VALUES (?)", (cmd.id,))
-    return ReadResult(cmd.id)
+    return cmd.id
 
 
-type Result = ReadResult
-
-
-@dataclass(frozen=True)
-class ReadResult:
-    id: int
+type Result = int
 
 
 def foo(
@@ -48,7 +43,7 @@ def foo(
 
     assert p is not None
 
-    v: StoreCompletion = yield p
+    v: StoreCompletion[int] = yield p
 
     assert len(v.results) == n
     return v
@@ -72,9 +67,10 @@ def baz(*, recursive: bool = True) -> Computation:
     assert v == "hi"
 
     now = yield Time()
+    assert isinstance(now, int)
     assert now >= 0
 
-    yield (yield baz(recursive=False))
+    assert (yield (yield baz(recursive=False))) == "I'm done"
 
     return v
 
@@ -87,13 +83,14 @@ def _run(seed: int) -> None:
     function_subsystem_size = r.randint(1, 100)
     io_size = r.randint(1, 100)
 
-    if store_sqlite_subsystem_size > io_size:
-        return
-
-    if echo_subsystem_size > io_size:
-        return
-
-    if function_subsystem_size > io_size:
+    if (
+        max(
+            store_sqlite_subsystem_size,
+            echo_subsystem_size,
+            function_subsystem_size,
+        )
+        > io_size
+    ):
         return
 
     aio = AIOSystem(io_size)
@@ -116,6 +113,7 @@ def _run(seed: int) -> None:
 
     n_coros = r.randint(1, 100)
     handles: list[Future[EchoCompletion | StoreCompletion[Result]]] = []
+    s.start()
     try:
         for _ in range(n_coros):
             match r.randint(0, 3):
@@ -140,6 +138,8 @@ def _run(seed: int) -> None:
             h.result(0)
         except TimeoutError:
             failed += 1
+        except AssertionError:
+            raise
         except Exception:  # noqa: S110
             pass
 

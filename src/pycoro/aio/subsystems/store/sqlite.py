@@ -46,12 +46,7 @@ class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
     def kind(self) -> str:
         return "store"
 
-    def start(self) -> None:
-        assert self._thread is None
-        t = Thread(target=self.worker, daemon=True, name="store-sqlite-worker")
-        t.start()
-        self._thread = t
-
+    def migrate(self) -> None:
         conn = sqlite3.connect(self._db)
         try:
             for script in self._migration_scripts:
@@ -63,6 +58,13 @@ class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
             raise
 
         conn.close()
+
+    def start(self) -> None:
+        assert self._thread is None
+        t = Thread(target=self.worker, daemon=True, name="store-sqlite-worker")
+        t.start()
+        self._thread = t
+        self.migrate()
 
     def shutdown(self) -> None:
         assert self._thread is not None

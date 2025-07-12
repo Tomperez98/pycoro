@@ -25,7 +25,6 @@ class Pycoro[I: Kind, O: Kind]:
         self._stopped.set()
 
     def add(self, c: Computation[I, O] | I) -> Future[O]:
-        self._start()
         return self._scheduler.add(c)
 
     def shutdown(self) -> None:
@@ -36,7 +35,7 @@ class Pycoro[I: Kind, O: Kind]:
         self._stopped.set()
         self._stop.clear()
 
-    def _start(self) -> None:
+    def start(self) -> None:
         if self._stopped.is_set():
             self._stopped.clear()
             self._aio.start()

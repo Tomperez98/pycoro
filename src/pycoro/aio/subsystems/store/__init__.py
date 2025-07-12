@@ -37,6 +37,7 @@ class StoreCompletion[R: Hashable]:
 
 class StoreSubsystem[C: Hashable, R: Hashable](Protocol):
     def execute(self, transactions: list[Transaction[C]]) -> list[list[R]]: ...
+    def migrate(self) -> None: ...
 
 
 def process(
