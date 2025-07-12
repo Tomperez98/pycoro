@@ -27,7 +27,7 @@ class Transaction[C: Hashable]:
 
 # Completion
 @dataclass(frozen=True)
-class StoreCompletion[R: Hashable]:
+class StoreCompletion[R]:
     results: list[R]
 
     @property
@@ -35,7 +35,7 @@ class StoreCompletion[R: Hashable]:
         return "store"
 
 
-class StoreSubsystem[C: Hashable, R: Hashable](Protocol):
+class StoreSubsystem[C: Hashable, R](Protocol):
     def execute(self, transactions: list[Transaction[C]]) -> list[list[R]]: ...
     def migrate(self) -> None: ...
 

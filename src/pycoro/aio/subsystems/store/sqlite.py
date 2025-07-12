@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from pycoro.aio import AIO
 
 
-class StoreSqliteSubsystem[C: Hashable, R: Hashable]:
+class StoreSqliteSubsystem[C: Hashable, R]:
     def __init__(
         self,
         aio: AIO[StoreSubmission, StoreCompletion],
