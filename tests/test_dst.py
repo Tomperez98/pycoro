@@ -13,7 +13,7 @@ from pycoro.system import Pycoro
 if TYPE_CHECKING:
     from sqlite3 import Connection
 
-    from pycoro.scheduler import Computation, Promise
+    from pycoro.scheduler import Computation
 
 
 MAX_COROS = 1000
@@ -102,14 +102,20 @@ def transfer(source: int, target: int, amount: int) -> Computation:
         msg = "same accoun transfer"
         raise Exception(msg)  # noqa: TRY002
 
-    p_source_balance: Promise[int] = yield StoreSubmission(Transaction([ReadBalance(source)]))
-    source_balance, version = (yield p_source_balance).results[0]
+    source_balance, version = (
+        yield (yield StoreSubmission(Transaction([ReadBalance(source)])))
+    ).results[0]
     if source_balance - amount < 0:
         msg = "not enough founds."
         raise Exception(msg)  # noqa: TRY002
-    yield StoreSubmission(
-        Transaction(
-            [UpdateBalanceEnsureVersion(source, -amount, version), UpdateBalance(target, amount)]
+    yield (
+        yield StoreSubmission(
+            Transaction(
+                [
+                    UpdateBalanceEnsureVersion(source, -amount, version),
+                    UpdateBalance(target, amount),
+                ]
+            )
         )
     )
 
@@ -122,7 +128,7 @@ def test_dst() -> None:
     stmt.extend(f"INSERT INTO accounts VALUES ({i}, 100, 0)" for i in range(1, NUM_ACCOUNTS))  # noqa: S608
 
     r = Random()
-    aio = AIODst(r, r.random())
+    aio = AIODst[StoreSubmission, StoreCompletion](r, r.random())
     store_sqlite_subsystem = StoreSqliteSubsystem(
         aio, "dst.db", stmt, MAX_COROS, r.randint(1, MAX_COROS // 10)
     )
@@ -154,7 +160,7 @@ def test_dst() -> None:
 
     for i in range(MAX_COROS * 5):
         s.tick(i)
-        completion: StoreCompletion = aio.check(
+        completion: StoreCompletion[bool] = aio.check(
             StoreSubmission(
                 Transaction(
                     [CheckNegativeBalanceAccounts(), CheckNoMoneyDestroyed(money_in_system)]
