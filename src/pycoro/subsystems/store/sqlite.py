@@ -2,29 +2,31 @@ from __future__ import annotations
 
 import contextlib
 import sqlite3
-from collections.abc import Callable, Hashable
+from collections.abc import Hashable
 from queue import Full, Queue, ShutDown
 from sqlite3 import Connection
 from threading import Thread
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from pycoro.aio.subsystems.store import (
+from pycoro.bus import CQE, SQE
+from pycoro.subsystems.store import (
     StoreCompletion,
     StoreSubmission,
     Transaction,
     collect,
     process,
 )
-from pycoro.bus import CQE, SQE
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from pycoro.aio import AIO
 
 
-class StoreSqliteSubsystem[C: Hashable, R]:
+class StoreSqliteSubsystem:
     def __init__(
         self,
-        aio: AIO[StoreSubmission, StoreCompletion],
+        aio: AIO,
         db: str,
         migration_scripts: list[str],
         size: int = 100,
@@ -32,7 +34,7 @@ class StoreSqliteSubsystem[C: Hashable, R]:
     ) -> None:
         self._aio = aio
         self._sq = Queue[SQE[StoreSubmission, StoreCompletion] | int](size + 1)
-        self._cmd_handlers: dict[type[C], Callable[[Connection, C], R]] = {}
+        self._cmd_handlers: dict[type[Hashable], Callable[[Connection, Any], Any]] = {}
         self._thread: Thread | None = None
         self._batch_size = batch_size
         self._db = db
@@ -61,10 +63,9 @@ class StoreSqliteSubsystem[C: Hashable, R]:
 
     def start(self) -> None:
         assert self._thread is None
-        t = Thread(target=self.worker, daemon=True, name="store-sqlite-worker")
+        t = Thread(target=self.worker, daemon=True)
         t.start()
         self._thread = t
-        self.migrate()
 
     def shutdown(self) -> None:
         assert self._thread is not None
@@ -80,17 +81,19 @@ class StoreSqliteSubsystem[C: Hashable, R]:
             return False
         return True
 
-    def process(self, sqes: list[SQE]) -> list[CQE]:
+    def process(
+        self, sqes: list[SQE[StoreSubmission, StoreCompletion]]
+    ) -> list[CQE[StoreCompletion]]:
         return process(self, sqes)
 
     def flush(self, time: int) -> None:
         with contextlib.suppress(Full):
             self._sq.put_nowait(time)
 
-    def execute(self, transactions: list[Transaction[C]]) -> list[list[R]]:
+    def execute(self, transactions: list[Transaction]) -> list[list[Any]]:
         conn = sqlite3.connect(self._db, autocommit=False)
         try:
-            results: list[list[R]] = []
+            results: list[list[Any]] = []
             for transaction in transactions:
                 assert len(transaction.cmds) > 0, "expect a command"
                 results.append(
@@ -106,7 +109,9 @@ class StoreSqliteSubsystem[C: Hashable, R]:
         conn.close()
         return results
 
-    def add_command_handler(self, cmd: type[C], handler: Callable[[Connection, C], R]) -> None:
+    def add_command_handler[T: Hashable](
+        self, cmd: type[T], handler: Callable[[Connection, T], Any]
+    ) -> None:
         assert cmd not in self._cmd_handlers
         self._cmd_handlers[cmd] = handler
 
@@ -119,7 +124,6 @@ class StoreSqliteSubsystem[C: Hashable, R]:
 
             assert len(sqes) <= self._batch_size
             if len(sqes) > 0:
-                assert not isinstance(sqes[0].value, Callable)
-                assert sqes[0].value.kind == self.kind
+                assert sqes[0].v.kind == self.kind
                 for cqe in self.process(sqes):
                     self._aio.enqueue((cqe, self.kind))

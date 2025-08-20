@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Hashable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol, assert_never
+from typing import TYPE_CHECKING, Any, Protocol, assert_never
 
-from pycoro import CQE, SQE
+from pycoro.bus import CQE, SQE
 
 if TYPE_CHECKING:
     from queue import Queue
@@ -12,8 +12,8 @@ if TYPE_CHECKING:
 
 # Submission
 @dataclass(frozen=True)
-class StoreSubmission[C: Hashable]:
-    transaction: Transaction[C]
+class StoreSubmission:
+    transaction: Transaction
 
     @property
     def kind(self) -> str:
@@ -21,34 +21,29 @@ class StoreSubmission[C: Hashable]:
 
 
 @dataclass(frozen=True)
-class Transaction[C: Hashable]:
-    cmds: list[C]
+class Transaction[T: Hashable]:
+    cmds: list[T]
 
 
 # Completion
 @dataclass(frozen=True)
-class StoreCompletion[R]:
-    results: list[R]
+class StoreCompletion:
+    results: list[Any]
 
     @property
     def kind(self) -> str:
         return "store"
 
 
-class StoreSubsystem[C: Hashable, R](Protocol):
-    def execute(self, transactions: list[Transaction[C]]) -> list[list[R]]: ...
-    def migrate(self) -> None: ...
+class StoreSubsystem(Protocol):
+    def execute(self, transactions: list[Transaction]) -> list[list[Any]]: ...
 
 
 def process(
     store: StoreSubsystem,
     sqes: list[SQE[StoreSubmission, StoreCompletion]],
 ) -> list[CQE[StoreCompletion]]:
-    transactions: list[Transaction] = []
-
-    for sqe in sqes:
-        assert isinstance(sqe.value, StoreSubmission)
-        transactions.append(sqe.value.transaction)
+    transactions = [sqe.v.transaction for sqe in sqes]
 
     try:
         result = store.execute(transactions)
@@ -57,15 +52,17 @@ def process(
         result = e
 
     return [
-        CQE(result if isinstance(result, Exception) else StoreCompletion(result[i]), sqe.callback)
+        CQE(result if isinstance(result, Exception) else StoreCompletion(result[i]), sqe.cb)
         for i, sqe in enumerate(sqes)
     ]
 
 
-def collect(c: Queue[SQE | int], n: int) -> list[SQE[StoreSubmission, StoreCompletion]]:
+def collect(
+    c: Queue[SQE[StoreSubmission, StoreCompletion] | int], n: int
+) -> list[SQE[StoreSubmission, StoreCompletion]]:
     assert n > 0, "batch size must be greater than 0"
 
-    batch: list[SQE] = []
+    batch: list[SQE[StoreSubmission, StoreCompletion]] = []
     for _ in range(n):
         sqe = c.get()
 

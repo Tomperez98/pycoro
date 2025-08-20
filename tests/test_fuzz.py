@@ -3,17 +3,18 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 from queue import Full
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from pycoro import Computation, Promise, Pycoro
+from pycoro import Pycoro
 from pycoro.aio import AIOSystem
-from pycoro.aio.subsystems.echo import EchoCompletion, EchoSubmission, EchoSubsystem
-from pycoro.aio.subsystems.function import FunctionSubsystem
-from pycoro.aio.subsystems.store import StoreCompletion, StoreSubmission, Transaction
-from pycoro.aio.subsystems.store.sqlite import StoreSqliteSubsystem
-from pycoro.scheduler import Time
+from pycoro.scheduler import Computation, Promise, Time
+from pycoro.subsystems.echo import EchoCompletion, EchoSubmission, EchoSubsystem
+from pycoro.subsystems.function import FunctionSubsystem
+from pycoro.subsystems.store import StoreCompletion, StoreSubmission, Transaction
+from pycoro.subsystems.store.sqlite import StoreSqliteSubsystem
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from concurrent.futures import Future
     from sqlite3 import Connection
 
@@ -36,14 +37,14 @@ type Result = int
 
 def foo(
     n: int,
-) -> Computation[StoreSubmission[Command], StoreCompletion[Result]]:
+) -> Computation[StoreSubmission, StoreCompletion]:
     p: Promise | None = None
     for _ in range(n):
         p = yield StoreSubmission(Transaction([ReadCommand(n) for _ in range(n)]))
 
     assert p is not None
 
-    v: StoreCompletion[int] = yield p
+    v: StoreCompletion = yield p
 
     assert len(v.results) == n
     return v
@@ -59,7 +60,7 @@ def bar(n: int, data: str) -> Computation[EchoSubmission, EchoCompletion]:
     return v
 
 
-def baz(*, recursive: bool = True) -> Computation:
+def baz(*, recursive: bool = True) -> Computation[Callable[[], Any], Any]:
     if not recursive:
         return "I'm done"
     p = yield lambda: "hi"
@@ -112,7 +113,7 @@ def _run(seed: int) -> None:
     s = Pycoro(aio, r.randint(1, 100), r.randint(1, 100), r.random() * 2)
 
     n_coros = r.randint(1, 100)
-    handles: list[Future[EchoCompletion | StoreCompletion[Result]]] = []
+    handles: list[Future[EchoCompletion | StoreCompletion]] = []
     s.start()
     try:
         for _ in range(n_coros):

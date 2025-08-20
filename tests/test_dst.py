@@ -5,10 +5,10 @@ from pathlib import Path
 from random import Random
 from typing import TYPE_CHECKING
 
+from pycoro import Pycoro
 from pycoro.aio import AIODst
-from pycoro.aio.subsystems.store import StoreCompletion, StoreSubmission, Transaction
-from pycoro.aio.subsystems.store.sqlite import StoreSqliteSubsystem
-from pycoro.system import Pycoro
+from pycoro.subsystems.store import StoreCompletion, StoreSubmission, Transaction
+from pycoro.subsystems.store.sqlite import StoreSqliteSubsystem
 
 if TYPE_CHECKING:
     from sqlite3 import Connection
@@ -97,7 +97,7 @@ def check_no_money_destroyed(conn: Connection, cmd: CheckNoMoneyDestroyed) -> bo
     return total_money_in_system == cmd.money_in_the_system
 
 
-def transfer(source: int, target: int, amount: int) -> Computation:
+def transfer(source: int, target: int, amount: int) -> Computation[StoreSubmission, None]:
     if source == target:
         msg = "same accoun transfer"
         raise Exception(msg)  # noqa: TRY002
@@ -128,7 +128,7 @@ def test_dst() -> None:
     stmt.extend(f"INSERT INTO accounts VALUES ({i}, 100, 0)" for i in range(1, NUM_ACCOUNTS))  # noqa: S608
 
     r = Random()
-    aio = AIODst[StoreSubmission, StoreCompletion](r, r.random())
+    aio = AIODst(r, r.random())
     store_sqlite_subsystem = StoreSqliteSubsystem(
         aio, "dst.db", stmt, MAX_COROS, r.randint(1, MAX_COROS // 10)
     )
@@ -160,7 +160,7 @@ def test_dst() -> None:
 
     for i in range(MAX_COROS * 5):
         s.tick(i)
-        completion: StoreCompletion[bool] = aio.check(
+        completion: StoreCompletion = aio.check(
             StoreSubmission(
                 Transaction(
                     [CheckNegativeBalanceAccounts(), CheckNoMoneyDestroyed(money_in_system)]

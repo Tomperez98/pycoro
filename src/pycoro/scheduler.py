@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import contextlib
 from collections import deque
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from concurrent.futures import Future
 from queue import Empty, Queue
 from typing import TYPE_CHECKING, Any
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 # commands.
-class Promise[T]:
+class Promise:
     """Await for computation result."""
 
 
@@ -24,30 +24,30 @@ class Time:
 
 
 # types
-type _Yieldable[I, O] = Computation[I, O] | Promise[O] | Time | I
-type Computation[I, O] = Generator[_Yieldable[I, O], Any, O]
+type _Yieldable[I: Kind | Callable[[], Any], O] = Computation[I, O] | Promise | Time | I
+type Computation[I: Kind | Callable[[], Any], O] = Generator[_Yieldable[I, O], Any, O]
 
 
 # internal classes
-class _FV[O: Kind]:
-    def __init__(self, v: O | Any | Exception) -> None:
+class _FV:
+    def __init__(self, v: Any | Exception) -> None:
         self.v = v
 
 
-class _IPC[I: Kind, O: Kind]:
+class _IPC[I: Kind | Callable[[], Any], O]:
     def __init__(
         self,
         coro: Computation[I, O] | I,
     ) -> None:
         self.coro = coro
 
-        self.next: O | Exception | Promise[O] | int | None = None
-        self.final: _FV[O] | None = None
+        self.next: O | Exception | Promise | int | None = None
+        self.final: _FV | None = None
 
-        self._pend: list[Promise[O]] = []
-        self._final: _FV[O] | None = None
+        self._pend: list[Promise] = []
+        self._final: _FV | None = None
 
-    def send(self) -> _Yieldable[I, O] | _FV[O]:
+    def send(self) -> _Yieldable[I, O] | _FV:
         assert isinstance(self.coro, Generator), (
             "can only run send in a computation that's a coroutine"
         )
@@ -85,7 +85,7 @@ class _IPC[I: Kind, O: Kind]:
                 return yielded
 
 
-class Scheduler[I: Kind, O: Kind]:
+class Scheduler[I: Kind | Callable[[], Any], O]:
     def __init__(self, aio: aio.AIO, size: int) -> None:
         self._aio = aio
         self._in = Queue[tuple[_IPC[I, O], Future[O]]](size)
@@ -93,12 +93,12 @@ class Scheduler[I: Kind, O: Kind]:
         self._running: deque[_IPC[I, O] | tuple[_IPC[I, O], Future[O]]] = deque()
         self._awaiting: dict[_IPC[I, O], _IPC[I, O] | None] = {}
 
-        self._p_to_comp: dict[Promise[O], _IPC[I, O]] = {}
-        self._comp_to_f: dict[_IPC[I, O], Future[O | Any]] = {}
+        self._p_to_comp: dict[Promise, _IPC[I, O]] = {}
+        self._comp_to_f: dict[_IPC[I, O], Future[O]] = {}
 
-    def add(self, c: Computation[I, O] | I) -> Future[O | Any]:
+    def add(self, c: Computation[I, O] | I) -> Future[O]:
         """Schedule computation."""
-        f = Future[O | Any]()
+        f = Future[O]()
         self._in.put_nowait((_IPC(c), f))
         return f
 
@@ -213,7 +213,7 @@ class Scheduler[I: Kind, O: Kind]:
         """Total computations on the scheduler."""
         return len(self._running) + len(self._awaiting) + self._in.qsize()
 
-    def _set(self, comp: _IPC[I, O], final_value: _FV[O]) -> None:
+    def _set(self, comp: _IPC[I, O], final_value: _FV) -> None:
         assert comp.final is None
         comp.final = final_value
         if (f := self._comp_to_f.pop(comp, None)) is not None:
