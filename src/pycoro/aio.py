@@ -75,7 +75,7 @@ class AIOSystem:
         cqes: list[CQE] = []
         for _ in range(n):
             try:
-                cqe, kind = self._cq.get_nowait()
+                cqe, _ = self._cq.get_nowait()
             except Empty:
                 break
 
