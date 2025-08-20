@@ -20,7 +20,7 @@ class Pycoro[I: Kind | Callable[[], Any], O]:
         self._scheduler = Scheduler(self._aio, size)
         self._dequeue_size = dequeue_size
         self._tick_freq = tick_freq
-        self._thread = Thread(target=self._loop, daemon=True, name="pycoro-main-thread")
+        self._thread = Thread(target=self._loop, daemon=True)
         self._stop = Event()
         self._stopped = Event()
         self._stopped.set()
