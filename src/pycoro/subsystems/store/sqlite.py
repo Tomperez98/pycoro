@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from pycoro.bus import CQE, SQE
 from pycoro.subsystems.store import (
+    KIND,
     StoreCompletion,
     StoreSubmission,
     Transaction,
@@ -40,13 +41,11 @@ class StoreSqliteSubsystem:
         self._db = db
         self._migration_scripts = migration_scripts
 
-    @property
     def size(self) -> int:
         return self._sq.maxsize - 1
 
-    @property
     def kind(self) -> str:
-        return "store"
+        return KIND
 
     def migrate(self) -> None:
         conn = sqlite3.connect(self._db)
@@ -75,6 +74,8 @@ class StoreSqliteSubsystem:
         self._sq.join()
 
     def enqueue(self, sqe: SQE[StoreSubmission, StoreCompletion]) -> bool:
+        assert sqe.v.kind() == KIND
+
         try:
             self._sq.put_nowait(sqe)
         except Full:
@@ -124,6 +125,6 @@ class StoreSqliteSubsystem:
 
             assert len(sqes) <= self._batch_size
             if len(sqes) > 0:
-                assert sqes[0].v.kind == self.kind
+                assert sqes[0].v.kind() == self.kind()
                 for cqe in self.process(sqes):
-                    self._aio.enqueue((cqe, self.kind))
+                    self._aio.enqueue((cqe, self.kind()))

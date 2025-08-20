@@ -10,15 +10,16 @@ from pycoro.bus import CQE, SQE
 if TYPE_CHECKING:
     from pycoro.aio import AIO
 
+KIND = "echo"
+
 
 # Submission
 @dataclass(frozen=True)
 class EchoSubmission:
     data: str
 
-    @property
     def kind(self) -> str:
-        return "echo"
+        return KIND
 
 
 # Completion
@@ -26,9 +27,8 @@ class EchoSubmission:
 class EchoCompletion:
     data: str
 
-    @property
     def kind(self) -> str:
-        return "echo"
+        return KIND
 
 
 class EchoSubsystem:
@@ -43,13 +43,11 @@ class EchoSubsystem:
         self._workers = workers
         self._threads: list[Thread] = []
 
-    @property
     def size(self) -> int:
         return self._sq.maxsize
 
-    @property
     def kind(self) -> str:
-        return "echo"
+        return KIND
 
     def start(self) -> None:
         assert len(self._threads) == 0
@@ -65,11 +63,10 @@ class EchoSubsystem:
             t.join()
 
         self._threads.clear()
-        assert len(self._threads) == 0, "at least one worker must be set."
         self._sq.join()
 
     def enqueue(self, sqe: SQE[EchoSubmission, EchoCompletion]) -> bool:
-        assert sqe.v.kind == "echo"
+        assert sqe.v.kind() == KIND
         try:
             self._sq.put_nowait(sqe)
         except Full:
@@ -97,7 +94,7 @@ class EchoSubsystem:
             except ShutDown:
                 break
 
-            assert sqe.v.kind == self.kind
+            assert sqe.v.kind() == self.kind()
 
-            self._aio.enqueue((self.process([sqe])[0], self.kind))
+            self._aio.enqueue((self.process([sqe])[0], self.kind()))
             self._sq.task_done()

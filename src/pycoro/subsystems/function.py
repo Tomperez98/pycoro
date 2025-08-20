@@ -11,6 +11,9 @@ if TYPE_CHECKING:
     from pycoro.aio import AIO
 
 
+KIND = "function"
+
+
 class FunctionSubsystem:
     def __init__(self, aio: AIO, size: int = 100, workers: int = 1) -> None:
         self._aio = aio
@@ -18,17 +21,14 @@ class FunctionSubsystem:
         self._workers = workers
         self._threads: list[Thread] = []
 
-    @property
     def size(self) -> int:
         return self._sq.maxsize
 
-    @property
     def kind(self) -> str:
-        return "function"
+        return KIND
 
     def start(self) -> None:
         assert len(self._threads) == 0
-
         for _ in range(self._workers):
             t = Thread(target=self.worker, daemon=True)
             t.start()
@@ -44,6 +44,8 @@ class FunctionSubsystem:
         self._sq.join()
 
     def enqueue[T](self, sqe: SQE[Callable[[], T], T]) -> bool:
+        assert isinstance(sqe.v, Callable)
+
         try:
             self._sq.put_nowait(sqe)
         except Full:
@@ -65,5 +67,5 @@ class FunctionSubsystem:
             except ShutDown:
                 break
 
-            self._aio.enqueue((self.process([sqe])[0], "function"))
+            self._aio.enqueue((self.process([sqe])[0], KIND))
             self._sq.task_done()

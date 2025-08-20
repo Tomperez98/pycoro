@@ -11,12 +11,10 @@ if TYPE_CHECKING:
 
 
 class Kind(Protocol):
-    @property
     def kind(self) -> str: ...
 
 
 class SubSystem(Kind, Protocol):
-    @property
     def size(self) -> int: ...
     def start(self) -> None: ...
     def shutdown(self) -> None: ...
@@ -42,11 +40,11 @@ class AIOSystem:
         self._subsystems: dict[str, SubSystem] = {}
 
     def attach_subsystem(self, subsystem: SubSystem) -> None:
-        assert subsystem.size <= self._cq.maxsize, (
+        assert subsystem.size() <= self._cq.maxsize, (
             "subsystem size must be equal or less than the AIO size."
         )
-        assert subsystem.kind not in self._subsystems, "subsystem is already registered."
-        self._subsystems[subsystem.kind] = subsystem
+        assert subsystem.kind() not in self._subsystems, "subsystem is already registered."
+        self._subsystems[subsystem.kind()] = subsystem
 
     def start(self) -> None:
         for subsystem in self._subsystems.values():
@@ -68,7 +66,7 @@ class AIOSystem:
             case Callable():
                 subsystem = self._subsystems["function"]
             case _:
-                subsystem = self._subsystems[sqe.v.kind]
+                subsystem = self._subsystems[sqe.v.kind()]
 
         if not subsystem.enqueue(sqe):
             sqe.cb(Exception("aio submission queue full"))
@@ -98,13 +96,13 @@ class AIODst:
         self._cqes: list[CQE] = []
 
     def attach_subsystem(self, subsystem: SubSystem) -> None:
-        assert subsystem.kind not in self._subsystems, "subsystem is already registered."
-        self._subsystems[subsystem.kind] = subsystem
+        assert subsystem.kind() not in self._subsystems, "subsystem is already registered."
+        self._subsystems[subsystem.kind()] = subsystem
 
     def check(self, value: Any) -> Any:
         def _(result: Any | Exception) -> None: ...
 
-        cqe = self._subsystems[value.kind].process([SQE(value, lambda r: _(r))])[0]
+        cqe = self._subsystems[value.kind()].process([SQE(value, lambda r: _(r))])[0]
         assert not isinstance(cqe.v, Exception)
         return cqe.v
 
@@ -120,7 +118,7 @@ class AIODst:
         flush: dict[str, list[SQE]] = {}
         for sqe in self._sqes:
             flush.setdefault(
-                sqe.v.kind if not isinstance(sqe.v, Callable) else "function", []
+                sqe.v.kind() if not isinstance(sqe.v, Callable) else "function", []
             ).append(sqe)
 
         for kind, sqes in flush.items():

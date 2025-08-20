@@ -9,15 +9,16 @@ from pycoro.bus import CQE, SQE
 if TYPE_CHECKING:
     from queue import Queue
 
+KIND = "store"
+
 
 # Submission
 @dataclass(frozen=True)
 class StoreSubmission:
     transaction: Transaction
 
-    @property
     def kind(self) -> str:
-        return "store"
+        return KIND
 
 
 @dataclass(frozen=True)
@@ -30,9 +31,8 @@ class Transaction[T: Hashable]:
 class StoreCompletion:
     results: list[Any]
 
-    @property
     def kind(self) -> str:
-        return "store"
+        return KIND
 
 
 class StoreSubsystem(Protocol):
