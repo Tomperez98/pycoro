@@ -15,12 +15,10 @@ if TYPE_CHECKING:
 
 
 # commands.
-class Promise:
-    """Await for computation result."""
+class Promise: ...
 
 
-class Time:
-    """Get current time in milliseconds."""
+class Time: ...
 
 
 # types
@@ -97,24 +95,21 @@ class Scheduler[I: Kind | Callable[[], Any], O]:
         self._comp_to_f: dict[_IPC[I, O], Future[O]] = {}
 
     def add(self, c: Computation[I, O] | I) -> Future[O]:
-        """Schedule computation."""
         f = Future[O]()
         self._in.put_nowait((_IPC(c), f))
         return f
 
     def shutdown(self) -> None:
-        """Shutdown scheduler."""
         self._aio.shutdown()
         self._in.shutdown()
         self._in.join()
-        assert len(self._running) == 0
-        assert len(self._awaiting) == 0
-        assert len(self._p_to_comp) == 0
-        assert len(self._comp_to_f) == 0
+        assert len(self._running) == 0, f"_running not empty: {len(self._running)}"
+        assert len(self._awaiting) == 0, f"_awaiting not empty: {len(self._awaiting)}"
+        assert len(self._p_to_comp) == 0, f"_p_to_comp not empty: {len(self._p_to_comp)}"
+        assert len(self._comp_to_f) == 0, f"_comp_to_f not empty: {len(self._comp_to_f)}"
 
     def run_until_blocked(self, time: int) -> None:
-        """Execute computations until blocked."""
-        assert len(self._running) == 0
+        assert len(self._running) == 0, f"_running not empty: {len(self._running)}"
 
         qsize = self._in.qsize()
         for _ in range(qsize):
@@ -127,17 +122,15 @@ class Scheduler[I: Kind | Callable[[], Any], O]:
 
         self.tick(time)
 
-        assert len(self._running) == 0
+        assert len(self._running) == 0, f"_running not empty: {len(self._running)}"
 
     def tick(self, time: int) -> None:
-        """Tick."""
         self._unblock()
 
         while self.step(time):
             continue
 
     def step(self, time: int) -> bool:
-        """Take a step."""
         try:
             match item := self._running.pop():
                 case _IPC():
@@ -210,7 +203,6 @@ class Scheduler[I: Kind | Callable[[], Any], O]:
                 self._running.appendleft(blocked)
 
     def size(self) -> int:
-        """Total computations on the scheduler."""
         return len(self._running) + len(self._awaiting) + self._in.qsize()
 
     def _set(self, comp: _IPC[I, O], final_value: _FV) -> None:

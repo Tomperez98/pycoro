@@ -9,8 +9,6 @@ from pycoro.bus import CQE, SQE
 if TYPE_CHECKING:
     from queue import Queue
 
-KIND = "store"
-
 
 # Submission
 @dataclass(frozen=True)
@@ -18,7 +16,7 @@ class StoreSubmission:
     transaction: Transaction
 
     def kind(self) -> str:
-        return KIND
+        return "store"
 
 
 @dataclass(frozen=True)
@@ -32,7 +30,7 @@ class StoreCompletion:
     results: list[Any]
 
     def kind(self) -> str:
-        return KIND
+        return "store"
 
 
 class StoreSubsystem(Protocol):
@@ -43,16 +41,17 @@ def process(
     store: StoreSubsystem,
     sqes: list[SQE[StoreSubmission, StoreCompletion]],
 ) -> list[CQE[StoreCompletion]]:
-    transactions = [sqe.v.transaction for sqe in sqes]
+    transactions = [sqe.v.transaction for sqe in sqes if isinstance(sqe.v, StoreSubmission)]
+    assert len(transactions) == len(sqes), "All SQEs must wrap a StoreSubmission"
 
     try:
-        result = store.execute(transactions)
-        assert len(transactions) == len(result), "transactions and results must have equal length"
+        results = store.execute(transactions)
+        assert len(results) == len(transactions), "Transactions and results must have equal length"
     except Exception as e:
-        result = e
+        results = e
 
     return [
-        CQE(result if isinstance(result, Exception) else StoreCompletion(result[i]), sqe.cb)
+        CQE(results if isinstance(results, Exception) else StoreCompletion(results[i]), sqe.cb)
         for i, sqe in enumerate(sqes)
     ]
 

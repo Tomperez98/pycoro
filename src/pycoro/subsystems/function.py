@@ -11,9 +11,6 @@ if TYPE_CHECKING:
     from pycoro.aio import AIO
 
 
-KIND = "function"
-
-
 class FunctionSubsystem:
     def __init__(self, aio: AIO, size: int = 100, workers: int = 1) -> None:
         self._aio = aio
@@ -25,17 +22,19 @@ class FunctionSubsystem:
         return self._sq.maxsize
 
     def kind(self) -> str:
-        return KIND
+        return "function"
 
     def start(self) -> None:
-        assert len(self._threads) == 0
+        assert len(self._threads) == 0, f"Threads already running: {len(self._threads)}"
         for _ in range(self._workers):
             t = Thread(target=self.worker, daemon=True)
             t.start()
             self._threads.append(t)
 
     def shutdown(self) -> None:
-        assert len(self._threads) == self._workers
+        assert len(self._threads) == self._workers, (
+            f"Thread count mismatch: {len(self._threads)} active, expected {self._workers}"
+        )
         self._sq.shutdown()
         for t in self._threads:
             t.join()
@@ -44,7 +43,7 @@ class FunctionSubsystem:
         self._sq.join()
 
     def enqueue[T](self, sqe: SQE[Callable[[], T], T]) -> bool:
-        assert isinstance(sqe.v, Callable)
+        assert isinstance(sqe.v, Callable), f"Expected Callable, got {type(sqe.v).__name__}"
 
         try:
             self._sq.put_nowait(sqe)
@@ -58,6 +57,8 @@ class FunctionSubsystem:
     def process[T](self, sqes: list[SQE[Callable[[], T], T]]) -> list[CQE[T]]:
         assert self._workers > 0, "must be at least one worker"
         sqe = sqes[0]
+        assert isinstance(sqe.v, Callable), f"Expected Callable, got {type(sqe.v).__name__}"
+
         return [CQE(sqe.v(), sqe.cb)]
 
     def worker(self) -> None:
@@ -67,5 +68,7 @@ class FunctionSubsystem:
             except ShutDown:
                 break
 
-            self._aio.enqueue((self.process([sqe])[0], KIND))
+            assert isinstance(sqe.v, Callable), f"Expected Callable, got {type(sqe.v).__name__}"
+
+            self._aio.enqueue((self.process([sqe])[0], self.kind()))
             self._sq.task_done()

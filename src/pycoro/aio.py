@@ -103,7 +103,7 @@ class AIODst:
         def _(result: Any | Exception) -> None: ...
 
         cqe = self._subsystems[value.kind()].process([SQE(value, lambda r: _(r))])[0]
-        assert not isinstance(cqe.v, Exception)
+        assert not isinstance(cqe.v, Exception), f"Unexpected exception: {value!r}"
         return cqe.v
 
     def start(self) -> None:

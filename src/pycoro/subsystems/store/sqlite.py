@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any
 
 from pycoro.bus import CQE, SQE
 from pycoro.subsystems.store import (
-    KIND,
     StoreCompletion,
     StoreSubmission,
     Transaction,
@@ -45,7 +44,7 @@ class StoreSqliteSubsystem:
         return self._sq.maxsize - 1
 
     def kind(self) -> str:
-        return KIND
+        return "store"
 
     def migrate(self) -> None:
         conn = sqlite3.connect(self._db)
@@ -61,20 +60,25 @@ class StoreSqliteSubsystem:
         conn.close()
 
     def start(self) -> None:
-        assert self._thread is None
+        assert self._thread is None, "Thread already started"
         t = Thread(target=self.worker, daemon=True)
         t.start()
         self._thread = t
 
     def shutdown(self) -> None:
-        assert self._thread is not None
+        assert self._thread is not None, "No thread running to shut down"
         self._sq.shutdown()
         self._thread.join()
         self._thread = None
         self._sq.join()
 
     def enqueue(self, sqe: SQE[StoreSubmission, StoreCompletion]) -> bool:
-        assert sqe.v.kind() == KIND
+        assert isinstance(sqe.v, StoreSubmission), (
+            f"Expected StoreSubmission, got {type(sqe.v).__name__}"
+        )
+        assert sqe.v.kind() == self.kind(), (
+            f"Kind mismatch: sqe.v.kind()={sqe.v.kind()} != self.kind()={self.kind()}"
+        )
 
         try:
             self._sq.put_nowait(sqe)
@@ -124,7 +128,7 @@ class StoreSqliteSubsystem:
                 break
 
             assert len(sqes) <= self._batch_size
+
             if len(sqes) > 0:
-                assert sqes[0].v.kind() == self.kind()
                 for cqe in self.process(sqes):
                     self._aio.enqueue((cqe, self.kind()))

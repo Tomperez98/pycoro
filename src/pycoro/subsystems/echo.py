@@ -10,8 +10,6 @@ from pycoro.bus import CQE, SQE
 if TYPE_CHECKING:
     from pycoro.aio import AIO
 
-KIND = "echo"
-
 
 # Submission
 @dataclass(frozen=True)
@@ -19,7 +17,7 @@ class EchoSubmission:
     data: str
 
     def kind(self) -> str:
-        return KIND
+        return "echo"
 
 
 # Completion
@@ -28,7 +26,7 @@ class EchoCompletion:
     data: str
 
     def kind(self) -> str:
-        return KIND
+        return "echo"
 
 
 class EchoSubsystem:
@@ -47,17 +45,19 @@ class EchoSubsystem:
         return self._sq.maxsize
 
     def kind(self) -> str:
-        return KIND
+        return "echo"
 
     def start(self) -> None:
-        assert len(self._threads) == 0
+        assert len(self._threads) == 0, f"Threads already running: {len(self._threads)}"
         for _ in range(self._workers):
             t = Thread(target=self.worker, daemon=True)
             t.start()
             self._threads.append(t)
 
     def shutdown(self) -> None:
-        assert len(self._threads) == self._workers
+        assert len(self._threads) == self._workers, (
+            f"Thread count mismatch: {len(self._threads)} active, expected {self._workers}"
+        )
         self._sq.shutdown()
         for t in self._threads:
             t.join()
@@ -66,7 +66,13 @@ class EchoSubsystem:
         self._sq.join()
 
     def enqueue(self, sqe: SQE[EchoSubmission, EchoCompletion]) -> bool:
-        assert sqe.v.kind() == KIND
+        assert isinstance(sqe.v, EchoSubmission), (
+            f"Expected EchoSubmission, got {type(sqe.v).__name__}"
+        )
+        assert sqe.v.kind() == self.kind(), (
+            f"Kind mismatch: sqe.v.kind()={sqe.v.kind()} != self.kind()={self.kind()}"
+        )
+
         try:
             self._sq.put_nowait(sqe)
         except Full:
@@ -79,6 +85,9 @@ class EchoSubsystem:
     def process(self, sqes: list[SQE[EchoSubmission, EchoCompletion]]) -> list[CQE[EchoCompletion]]:
         assert self._workers > 0, "must be at least one worker"
         sqe = sqes[0]
+        assert isinstance(sqe.v, EchoSubmission), (
+            f"Expected EchoSubmission, got {type(sqe.v).__name__}"
+        )
 
         return [
             CQE(
@@ -94,7 +103,9 @@ class EchoSubsystem:
             except ShutDown:
                 break
 
-            assert sqe.v.kind() == self.kind()
+            assert sqe.v.kind() == self.kind(), (
+                f"Kind mismatch: sqe.v.kind()={sqe.v.kind()} != self.kind()={self.kind()}"
+            )
 
             self._aio.enqueue((self.process([sqe])[0], self.kind()))
             self._sq.task_done()

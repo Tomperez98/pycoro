@@ -17,8 +17,8 @@ def test_aio_system() -> None:
         expected: T,
     ) -> Callable[[T | Exception], None]:
         def _(value: T | Exception) -> None:
-            assert not isinstance(value, Exception)
-            assert value == expected
+            assert not isinstance(value, Exception), f"Unexpected exception: {value!r}"
+            assert value == expected, f"Value mismatch: got {value!r}, expected {expected!r}"
 
         return _
 
@@ -52,8 +52,8 @@ def test_aio_dst() -> None:
         expected: T,
     ) -> Callable[[T | Exception], None]:
         def _(value: T | Exception) -> None:
-            assert not isinstance(value, Exception)
-            assert value == expected
+            assert not isinstance(value, Exception), f"Unexpected exception: {value!r}"
+            assert value == expected, f"Value mismatch: got {value!r}, expected {expected!r}"
 
         return _
 
