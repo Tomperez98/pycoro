@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from queue import Empty, Queue
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol
 
 from pycoro.bus import CQE, SQE
 
@@ -10,7 +10,6 @@ if TYPE_CHECKING:
     from random import Random
 
 
-@runtime_checkable
 class Kind(Protocol):
     @property
     def kind(self) -> str: ...
@@ -81,9 +80,6 @@ class AIOSystem:
                 cqe, kind = self._cq.get_nowait()
             except Empty:
                 break
-
-            if not isinstance(cqe.v, Exception) and isinstance(cqe.v, Kind):
-                assert cqe.v.kind == kind
 
             cqes.append(cqe)
             self._cq.task_done()
