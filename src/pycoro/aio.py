@@ -106,11 +106,11 @@ class AIODst:
         assert not isinstance(cqe.v, Exception), f"Unexpected exception: {value!r}"
         return cqe.v
 
-    def start(self) -> None:
+    def start(self) -> None: # pragma: no cover
         msg = "dst shouldn't be spawning workers"
         raise RuntimeError(msg)
 
-    def shutdown(self) -> None:
+    def shutdown(self) -> None: # pragma: no cover
         msg = "dst shouldn't have spawned workers"
         raise RuntimeError(msg)
 
