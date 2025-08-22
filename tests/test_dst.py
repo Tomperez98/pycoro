@@ -147,7 +147,7 @@ def test_dst() -> None:
 
     s = Pycoro(aio, MAX_COROS, r.randint(1, MAX_COROS // 10))
     money_in_system = 100 * max(range(1, NUM_ACCOUNTS))
-    _ = [
+    futures = [
         s.add(
             transfer(
                 r.choice(range(1, NUM_ACCOUNTS)),
@@ -175,3 +175,5 @@ def test_dst() -> None:
     no_money_destroyed = completion.results[0]
     assert no_money_destroyed
     Path().joinpath("dst.db").unlink(missing_ok=True)
+    for f in futures:
+        assert f.done()
