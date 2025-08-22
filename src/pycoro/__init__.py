@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from pycoro.aio import AIO
 
 
-class Pycoro[I: Kind | Callable[[], Any], O]:
+class Pycoro:
     def __init__(self, aio: AIO, size: int, dequeue_size: int, tick_freq: float = 0.1) -> None:
         self._aio = aio
         self._scheduler = Scheduler(self._aio, size)
@@ -25,7 +25,7 @@ class Pycoro[I: Kind | Callable[[], Any], O]:
         self._stopped = Event()
         self._stopped.set()
 
-    def add(self, c: Computation[I, O] | I) -> Future[O]:
+    def add[I: Kind | Callable[[], Any], O](self, c: Computation[I, O] | I) -> Future[O]:
         return self._scheduler.add(c)
 
     def shutdown(self) -> None:

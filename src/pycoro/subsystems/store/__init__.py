@@ -72,7 +72,7 @@ def collect(
             case int():
                 c.task_done()
                 return batch
-            case _: # pragma: no cover
+            case _:  # pragma: no cover
                 assert_never(sqe)
 
     return batch
