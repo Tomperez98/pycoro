@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
 from threading import Event, Thread
 from typing import TYPE_CHECKING, Any
 
@@ -9,6 +8,7 @@ from pycoro.aio import Kind
 from pycoro.scheduler import Computation, Scheduler
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from concurrent.futures import Future
 
     from pycoro.aio import AIO
@@ -25,7 +25,9 @@ class Pycoro:
         self._stopped = Event()
         self._stopped.set()
 
-    def add[I: Kind | Callable[[], Any], O](self, c: Computation[I, O] | I) -> Future[O]:
+    def add[I: Kind | Callable[[], Any], O](
+        self, c: Computation[I, O] | Callable[[], O]
+    ) -> Future[O]:
         return self._scheduler.add(c)
 
     def shutdown(self) -> None:

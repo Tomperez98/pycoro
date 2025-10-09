@@ -113,7 +113,7 @@ def _run(seed: int) -> None:
     s = Pycoro(aio, r.randint(1, 100), r.randint(1, 100), r.random() * 2)
 
     n_coros = r.randint(1, 100)
-    handles: list[Future[EchoCompletion | StoreCompletion]] = []
+    handles: list[Future[EchoCompletion | StoreCompletion | str]] = []
     s.start()
     try:
         for _ in range(n_coros):
