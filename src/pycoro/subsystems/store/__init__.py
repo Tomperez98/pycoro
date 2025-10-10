@@ -41,6 +41,8 @@ def process(
     store: StoreSubsystem,
     sqes: list[SQE[StoreSubmission, StoreCompletion]],
 ) -> list[CQE[StoreCompletion]]:
+    assert len(sqes) > 0
+
     transactions = [sqe.v.transaction for sqe in sqes if isinstance(sqe.v, StoreSubmission)]
     assert len(transactions) == len(sqes), "All SQEs must wrap a StoreSubmission"
 

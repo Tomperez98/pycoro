@@ -147,6 +147,9 @@ class AIODst:
                     to_process.append(sqe)
                     n += 1
 
+            if len(to_process) == 0:
+                continue
+
             for i, cqe in enumerate(self._subsystems[kind].process(to_process)):
                 if post_failure.get(i, False):
                     self.enqueue(
