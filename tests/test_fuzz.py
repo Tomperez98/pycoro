@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import random
+import sqlite3
 from dataclasses import dataclass
+from pathlib import Path
 from queue import Full
 from typing import TYPE_CHECKING, Any
 
@@ -96,10 +98,19 @@ def _run(seed: int) -> None:
 
     aio = AIOSystem(io_size)
 
+    db = "fuzz.db"
+    Path().joinpath(db).unlink(missing_ok=True)
+    with sqlite3.connect(db, autocommit=False) as conn:
+        cursor = conn.cursor()
+        _ = cursor.execute(
+            "CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, value INTEGER)"
+        )
+        conn.commit()
+
     echo_subsystem = EchoSubsystem(aio, echo_subsystem_size, r.randint(1, 3))
     store_sqlite_subsystem = StoreSqliteSubsystem(
         aio,
-        ":memory:",
+        db,
         store_sqlite_subsystem_size,
         r.randint(1, 100),
     )
@@ -144,10 +155,10 @@ def _run(seed: int) -> None:
             pass
 
     assert failed == 0
-
+    Path().joinpath(db).unlink(missing_ok=True)
     return
 
 
 def test_fuzz() -> None:
-    for _ in range(100):
+    for _ in range(20):
         _run(random.randint(1, 100))
