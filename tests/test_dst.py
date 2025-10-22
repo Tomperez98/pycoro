@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from random import Random
 from typing import TYPE_CHECKING
 
-from pycoro import Pycoro
 from pycoro.aio import AIODst
+from pycoro.pycoro import Pycoro
 from pycoro.subsystems.store import StoreCompletion, StoreSubmission, Transaction
 from pycoro.subsystems.store.sqlite import StoreSqliteSubsystem
 
@@ -78,7 +79,7 @@ def update_balance(conn: Connection, cmd: UpdateBalance) -> None:
 class CheckNegativeBalanceAccounts: ...
 
 
-def check_negative_balance_accounts(conn: Connection, cmd: CheckNegativeBalanceAccounts) -> bool:  # noqa: ARG001
+def check_negative_balance_accounts(conn: Connection, _cmd: CheckNegativeBalanceAccounts) -> bool:
     accounts_in_negative: int = conn.execute(
         "SELECT COUNT(*) FROM accounts WHERE balance < 0",
     ).fetchone()[0]
@@ -122,15 +123,23 @@ def transfer(source: int, target: int, amount: int) -> Computation[StoreSubmissi
 
 def test_dst() -> None:
     Path().joinpath("dst.db").unlink(missing_ok=True)
-    stmt = [
+    stmts = [
         "CREATE TABLE accounts(account_id INTEGER PRIMARY KEY, balance INTEGER, version INTEGER)"
     ]
-    stmt.extend(f"INSERT INTO accounts VALUES ({i}, 100, 0)" for i in range(1, NUM_ACCOUNTS))  # noqa: S608
+    stmts.extend(f"INSERT INTO accounts VALUES ({i}, 100, 0)" for i in range(1, NUM_ACCOUNTS))  # noqa: S608
+
+    # Execute SQL in a single connection
+    database = "dst.db"
+    with sqlite3.connect(database) as conn:
+        cursor = conn.cursor()
+        for stmt in stmts:
+            _ = cursor.execute(stmt)
+        conn.commit()
 
     r = Random()
     aio = AIODst(r, r.random())
     store_sqlite_subsystem = StoreSqliteSubsystem(
-        aio, "dst.db", stmt, MAX_COROS, r.randint(1, MAX_COROS // 10)
+        aio, "dst.db", MAX_COROS, r.randint(1, MAX_COROS // 10)
     )
     store_sqlite_subsystem.add_command_handler(ReadBalance, read_balance)
     store_sqlite_subsystem.add_command_handler(UpdateBalance, update_balance)
@@ -141,7 +150,6 @@ def test_dst() -> None:
         CheckNegativeBalanceAccounts, check_negative_balance_accounts
     )
     store_sqlite_subsystem.add_command_handler(CheckNoMoneyDestroyed, check_no_money_destroyed)
-    store_sqlite_subsystem.migrate()
 
     aio.attach_subsystem(store_sqlite_subsystem)
 

@@ -4,7 +4,7 @@ from collections.abc import Hashable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol, assert_never
 
-from pycoro.bus import CQE, SQE
+from pycoro.aio import CQE, SQE
 
 if TYPE_CHECKING:
     from queue import Queue
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 # Submission
 @dataclass(frozen=True)
 class StoreSubmission:
-    transaction: Transaction
+    transaction: Transaction[Any]
 
     def kind(self) -> str:
         return "store"
@@ -34,7 +34,7 @@ class StoreCompletion:
 
 
 class StoreSubsystem(Protocol):
-    def execute(self, transactions: list[Transaction]) -> list[list[Any]]: ...
+    def execute(self, transactions: list[Transaction[Any]]) -> list[list[Any]]: ...
 
 
 def process(
@@ -42,8 +42,9 @@ def process(
     sqes: list[SQE[StoreSubmission, StoreCompletion]],
 ) -> list[CQE[StoreCompletion]]:
     assert len(sqes) > 0
+    assert all(isinstance(sqe.v, StoreSubmission) for sqe in sqes)
 
-    transactions = [sqe.v.transaction for sqe in sqes if isinstance(sqe.v, StoreSubmission)]
+    transactions = [sqe.v.transaction for sqe in sqes]
     assert len(transactions) == len(sqes), "All SQEs must wrap a StoreSubmission"
 
     try:

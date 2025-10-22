@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from pycoro import Pycoro
 from pycoro.aio import AIOSystem
+from pycoro.pycoro import Pycoro
 from pycoro.subsystems.echo import EchoCompletion, EchoSubmission, EchoSubsystem
 from pycoro.subsystems.function import FunctionSubsystem
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from concurrent.futures import Future
 
     from pycoro.scheduler import Computation
 
@@ -35,11 +36,11 @@ def test_system() -> None:
     system = Pycoro(aio, 100, 100)
 
     system.start()
-    system.add(foo("foo")).result()
-    system.add(foo("bar")).result()
-    system.add(bar()).result()
+    _ = system.add(foo("foo")).result()
+    _ = system.add(foo("bar")).result()
+    _ = system.add(bar()).result()
 
-    futures = []
+    futures: list[Future[Any]] = []
     futures.append(system.add(foo("foo")))
     futures.append(system.add(foo("bar")))
     futures.append(system.add(bar()))

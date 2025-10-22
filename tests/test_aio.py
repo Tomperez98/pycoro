@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import random
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from pycoro.aio import AIODst, AIOSystem
-from pycoro.bus import CQE, SQE
+from pycoro.aio import CQE, SQE, AIODst, AIOSystem
 from pycoro.subsystems.echo import EchoCompletion, EchoSubmission, EchoSubsystem
 from pycoro.subsystems.function import FunctionSubsystem
 
@@ -37,7 +36,7 @@ def test_aio_system() -> None:
         aio.dispatch(SQE(a, b))
         i += 1
 
-    cqes: list[CQE] = []
+    cqes: list[CQE[Any]] = []
     while len(cqes) < i:
         cqes.extend(aio.dequeue(i))
 
@@ -73,7 +72,7 @@ def test_aio_dst() -> None:
 
     aio.flush(0)
 
-    cqes: list[CQE] = []
+    cqes: list[CQE[Any]] = []
     while len(cqes) < i:
         cqes.extend(aio.dequeue(2))
 

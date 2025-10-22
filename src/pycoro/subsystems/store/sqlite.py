@@ -6,9 +6,9 @@ from collections.abc import Hashable
 from queue import Full, Queue, ShutDown
 from sqlite3 import Connection
 from threading import Thread
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
-from pycoro.bus import CQE, SQE
+from pycoro.aio import CQE, SQE
 from pycoro.subsystems.store import (
     StoreCompletion,
     StoreSubmission,
@@ -28,36 +28,21 @@ class StoreSqliteSubsystem:
         self,
         aio: AIO,
         db: str,
-        migration_scripts: list[str],
         size: int = 100,
         batch_size: int = 100,
     ) -> None:
-        self._aio = aio
-        self._sq = Queue[SQE[StoreSubmission, StoreCompletion] | int](size + 1)
+        self._aio: Final = aio
+        self._sq: Final = Queue[SQE[StoreSubmission, StoreCompletion] | int](size + 1)
         self._cmd_handlers: dict[type[Hashable], Callable[[Connection, Any], Any]] = {}
         self._thread: Thread | None = None
-        self._batch_size = batch_size
-        self._db = db
-        self._migration_scripts = migration_scripts
+        self._batch_size: Final = batch_size
+        self._db: Final = db
 
     def size(self) -> int:
         return self._sq.maxsize - 1
 
     def kind(self) -> str:
         return "store"
-
-    def migrate(self) -> None:
-        conn = sqlite3.connect(self._db)
-        try:
-            for script in self._migration_scripts:
-                conn.execute(script)
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            conn.close()
-            raise
-
-        conn.close()
 
     def start(self) -> None:
         assert self._thread is None, "Thread already started"
@@ -95,7 +80,7 @@ class StoreSqliteSubsystem:
         with contextlib.suppress(Full):
             self._sq.put_nowait(time)
 
-    def execute(self, transactions: list[Transaction]) -> list[list[Any]]:
+    def execute(self, transactions: list[Transaction[Any]]) -> list[list[Any]]:
         conn = sqlite3.connect(self._db, autocommit=False)
         try:
             results: list[list[Any]] = []

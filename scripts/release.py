@@ -32,7 +32,7 @@ def main() -> None:
             "tag": f"v{version}",
         },
     )
-    webbrowser.open_new_tab(url=f"{source}/releases/new?{params}")
+    _ = webbrowser.open_new_tab(url=f"{source}/releases/new?{params}")
 
 
 if __name__ == "__main__":

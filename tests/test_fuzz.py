@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from queue import Full
 from typing import TYPE_CHECKING, Any
 
-from pycoro import Pycoro
 from pycoro.aio import AIOSystem
+from pycoro.pycoro import Pycoro
 from pycoro.scheduler import Computation, Promise, Time
 from pycoro.subsystems.echo import EchoCompletion, EchoSubmission, EchoSubsystem
 from pycoro.subsystems.function import FunctionSubsystem
@@ -28,7 +28,7 @@ class ReadCommand:
 
 
 def read_handler(conn: Connection, cmd: ReadCommand) -> int:
-    conn.execute("INSERT INTO users (value) VALUES (?)", (cmd.id,))
+    _ = conn.execute("INSERT INTO users (value) VALUES (?)", (cmd.id,))
     return cmd.id
 
 
@@ -100,7 +100,6 @@ def _run(seed: int) -> None:
     store_sqlite_subsystem = StoreSqliteSubsystem(
         aio,
         ":memory:",
-        ["CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, value INTEGER)"],
         store_sqlite_subsystem_size,
         r.randint(1, 100),
     )
@@ -136,7 +135,7 @@ def _run(seed: int) -> None:
     failed: int = 0
     for h in handles:
         try:
-            h.result(0)
+            _ = h.result(0)
         except TimeoutError:
             failed += 1
         except AssertionError:

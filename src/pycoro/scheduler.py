@@ -1,51 +1,47 @@
 from __future__ import annotations
 
 import contextlib
+import queue
 from collections import deque
 from collections.abc import Callable, Generator
 from concurrent.futures import Future
-from queue import Empty, Queue
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
-from pycoro.aio import Kind
-from pycoro.bus import SQE
+from pycoro.aio import SQE, Kind
 
 if TYPE_CHECKING:
     from pycoro import aio
 
 
-# commands.
 class Promise: ...
 
 
 class Time: ...
 
 
-# types
-type _Yieldable[I: Kind | Callable[[], Any], O] = Computation[I, O] | Promise | Time | I
-type Computation[I: Kind | Callable[[], Any], O] = Generator[_Yieldable[I, O], Any, O]
+type Yieldable[I: Kind | Callable[[], Any], O] = Computation[I, O] | Promise | Time | I
+type Computation[I: Kind | Callable[[], Any], O] = Generator[Yieldable[I, O], Any, O]
 
 
-# internal classes
-class _FV:
+class FV:
     def __init__(self, v: Any | Exception) -> None:
-        self.v = v
+        self.v: Final = v
 
 
-class _IPC[I: Kind | Callable[[], Any], O]:
+class InProcess[I: Kind | Callable[[], Any], O]:
     def __init__(
         self,
         coro: Computation[I, O] | I,
     ) -> None:
-        self.coro = coro
+        self.coro: Final = coro
 
         self.next: O | Exception | Promise | int | None = None
-        self.final: _FV | None = None
+        self.final: FV | None = None
 
         self._pend: list[Promise] = []
-        self._final: _FV | None = None
+        self._final: FV | None = None
 
-    def send(self) -> _Yieldable[I, O] | _FV:
+    def send(self) -> Yieldable[I, O] | FV:
         assert isinstance(self.coro, Generator), (
             "can only run send in a computation that's a coroutine"
         )
@@ -65,16 +61,16 @@ class _IPC[I: Kind | Callable[[], Any], O]:
                 case _:
                     yielded = self.coro.send(self.next)
         except StopIteration as e:
-            yielded = _FV(e.value)
+            yielded = FV(e.value)
         except Exception as e:
-            yielded = _FV(e)
+            yielded = FV(e)
 
         match yielded:
             case Promise():
                 with contextlib.suppress(ValueError):
                     self._pend.remove(yielded)
                 return yielded
-            case _FV():
+            case FV():
                 self._final = yielded
                 if self._pend:
                     return self._pend.pop()
@@ -85,18 +81,18 @@ class _IPC[I: Kind | Callable[[], Any], O]:
 
 class Scheduler[I: Kind | Callable[[], Any], O]:
     def __init__(self, aio: aio.AIO, size: int) -> None:
-        self._aio = aio
-        self._in = Queue[tuple[_IPC[I, O], Future[O]]](size)
+        self._aio: Final = aio
+        self._in: Final = queue.Queue[tuple[InProcess[I, O], Future[O]]](size)
 
-        self._running: deque[_IPC[I, O] | tuple[_IPC[I, O], Future[O]]] = deque()
-        self._awaiting: dict[_IPC[I, O], _IPC[I, O] | None] = {}
+        self._running: deque[InProcess[I, O] | tuple[InProcess[I, O], Future[O]]] = deque()
+        self._awaiting: dict[InProcess[I, O], InProcess[I, O] | None] = {}
 
-        self._p_to_comp: dict[Promise, _IPC[I, O]] = {}
-        self._comp_to_f: dict[_IPC[I, O], Future[O]] = {}
+        self._p_to_comp: dict[Promise, InProcess[I, O]] = {}
+        self._comp_to_f: dict[InProcess[I, O], Future[O]] = {}
 
     def add(self, c: Computation[I, O] | I) -> Future[O]:
         f = Future[O]()
-        self._in.put_nowait((_IPC(c), f))
+        self._in.put_nowait((InProcess(c), f))
         return f
 
     def shutdown(self) -> None:
@@ -115,7 +111,7 @@ class Scheduler[I: Kind | Callable[[], Any], O]:
         for _ in range(qsize):
             try:
                 e = self._in.get_nowait()
-            except Empty:
+            except queue.Empty:
                 return
             self._running.appendleft(e)
             self._in.task_done()
@@ -133,9 +129,9 @@ class Scheduler[I: Kind | Callable[[], Any], O]:
     def step(self, time: int) -> bool:
         try:
             match item := self._running.pop():
-                case _IPC():
+                case InProcess():
                     comp = item
-                case _IPC(), Future():
+                case InProcess(), Future():
                     comp, future = item
                     assert comp.next is None
                     self._comp_to_f[comp] = future
@@ -155,15 +151,15 @@ class Scheduler[I: Kind | Callable[[], Any], O]:
                         match child_comp.final:
                             case None:
                                 self._awaiting[child_comp] = comp
-                            case _FV(v=v):
+                            case FV(v=v):
                                 comp.next = v
                                 self._running.appendleft(comp)
 
-                    case _FV():
+                    case FV():
                         self._set(comp, yielded)
 
                     case Generator():
-                        child_comp = _IPC[I, O](yielded)
+                        child_comp = InProcess[I, O](yielded)
                         promise = Promise()
                         self._p_to_comp[promise] = child_comp
                         self._running.appendleft(child_comp)
@@ -175,11 +171,11 @@ class Scheduler[I: Kind | Callable[[], Any], O]:
                         comp.next = time
                         self._running.appendleft(comp)
                     case _:
-                        child_comp = _IPC[I, O](yielded)
+                        child_comp = InProcess[I, O](yielded)
                         promise = Promise()
                         self._p_to_comp[promise] = child_comp
                         self._aio.dispatch(
-                            SQE(yielded, lambda r, comp=child_comp: self._set(comp, _FV(r))),
+                            SQE(yielded, lambda r, comp=child_comp: self._set(comp, FV(r))),
                         )
 
                         comp.next = promise
@@ -189,7 +185,7 @@ class Scheduler[I: Kind | Callable[[], Any], O]:
                 assert comp.next is None
                 assert comp not in self._awaiting
 
-                self._aio.dispatch(SQE(comp.coro, lambda r, comp=comp: self._set(comp, _FV(r))))
+                self._aio.dispatch(SQE(comp.coro, lambda r, comp=comp: self._set(comp, FV(r))))
                 self._awaiting[comp] = None
         return True
 
@@ -205,7 +201,7 @@ class Scheduler[I: Kind | Callable[[], Any], O]:
     def size(self) -> int:
         return len(self._running) + len(self._awaiting) + self._in.qsize()
 
-    def _set(self, comp: _IPC[I, O], final_value: _FV) -> None:
+    def _set(self, comp: InProcess[I, O], final_value: FV) -> None:
         assert comp.final is None
         comp.final = final_value
         if (f := self._comp_to_f.pop(comp, None)) is not None:

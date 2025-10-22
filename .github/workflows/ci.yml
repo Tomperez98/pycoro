@@ -42,10 +42,10 @@ jobs:
         run: uv sync --dev
 
       - name: check linting
-        run: uv run ruff check
+        run: uv run poe check
 
       - name: check types
-        run: uv run pyright
+        run: uv run poe type-check
 
       - name: run tests
         run: uv run pytest

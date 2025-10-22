@@ -3,9 +3,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from queue import Full, Queue, ShutDown
 from threading import Thread
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
-from pycoro.bus import CQE, SQE
+from pycoro.aio import CQE, SQE
 
 if TYPE_CHECKING:
     from pycoro.aio import AIO
@@ -13,9 +13,9 @@ if TYPE_CHECKING:
 
 class FunctionSubsystem:
     def __init__(self, aio: AIO, size: int = 100, workers: int = 1) -> None:
-        self._aio = aio
-        self._sq = Queue[SQE[Callable[[], Any], Any]](size)
-        self._workers = workers
+        self._aio: Final = aio
+        self._sq: Final = Queue[SQE[Callable[[], Any], Any]](size)
+        self._workers: Final = workers
         self._threads: list[Thread] = []
 
     def size(self) -> int:
@@ -52,7 +52,7 @@ class FunctionSubsystem:
         return True
 
     def flush(self, time: int) -> None:
-        return
+        assert time > 0
 
     def process[T](self, sqes: list[SQE[Callable[[], T], T]]) -> list[CQE[T]]:
         assert self._workers > 0, "must be at least one worker"

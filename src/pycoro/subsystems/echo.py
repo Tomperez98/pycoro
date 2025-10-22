@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from queue import Full, Queue, ShutDown
 from threading import Thread
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
-from pycoro.bus import CQE, SQE
+from pycoro.aio import CQE, SQE
 
 if TYPE_CHECKING:
     from pycoro.aio import AIO
@@ -36,9 +36,9 @@ class EchoSubsystem:
         size: int = 100,
         workers: int = 1,
     ) -> None:
-        self._aio = aio
-        self._sq = Queue[SQE[EchoSubmission, EchoCompletion]](size)
-        self._workers = workers
+        self._aio: Final = aio
+        self._sq: Final = Queue[SQE[EchoSubmission, EchoCompletion]](size)
+        self._workers: Final = workers
         self._threads: list[Thread] = []
 
     def size(self) -> int:
@@ -80,7 +80,7 @@ class EchoSubsystem:
         return True
 
     def flush(self, time: int) -> None:
-        return
+        assert time > 0
 
     def process(self, sqes: list[SQE[EchoSubmission, EchoCompletion]]) -> list[CQE[EchoCompletion]]:
         assert self._workers > 0, "must be at least one worker"

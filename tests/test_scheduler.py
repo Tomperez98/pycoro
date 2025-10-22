@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from pycoro.aio import AIOSystem
+from pycoro.aio import CQE, AIOSystem
 from pycoro.scheduler import Computation, Scheduler
 from pycoro.subsystems.echo import EchoCompletion, EchoSubmission, EchoSubsystem
 from pycoro.subsystems.function import FunctionSubsystem
@@ -10,8 +10,6 @@ from pycoro.subsystems.function import FunctionSubsystem
 if TYPE_CHECKING:
     from collections.abc import Callable
     from concurrent.futures import Future
-
-    from pycoro.bus import CQE
 
 
 def foo(string: str) -> Computation[EchoSubmission, EchoCompletion]:
@@ -34,10 +32,10 @@ def test_scheduler() -> None:
     aio.attach_subsystem(EchoSubsystem(aio))
     aio.attach_subsystem(FunctionSubsystem(aio))
     aio.start()
-    scheduler = Scheduler(aio, 100)
+    scheduler = Scheduler[Any, Any](aio, 100)
 
     i = 0
-    futures: list[tuple[Future, Any]] = []
+    futures: list[tuple[Future[Any], Any]] = []
     for comp, expected in [
         (foo("foo"), EchoCompletion("foo")),
         (foo("bar"), EchoCompletion("bar")),
