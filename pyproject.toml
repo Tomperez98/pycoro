@@ -41,6 +41,7 @@ exclude_also = [
 fmt = "ruff format"
 check = "ruff check"
 type-check = "basedpyright"
+test = "pytest"
 
 [tool.basedpyright]
 reportExplicitAny = false
