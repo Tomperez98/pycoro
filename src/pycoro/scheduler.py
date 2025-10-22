@@ -1,212 +1,130 @@
 from __future__ import annotations
 
-import contextlib
 import queue
-from collections import deque
-from collections.abc import Callable, Generator
-from concurrent.futures import Future
-from typing import TYPE_CHECKING, Any, Final
-
-from pycoro.aio import SQE, Kind
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Final, Protocol
 
 if TYPE_CHECKING:
-    from pycoro import aio
+    from collections.abc import Callable
+
+    from pycoro.io import io
 
 
-class Promise: ...
-
-
-class Time: ...
-
-
-type Yieldable[I: Kind | Callable[[], Any], O] = Computation[I, O] | Promise | Time | I
-type Computation[I: Kind | Callable[[], Any], O] = Generator[Yieldable[I, O], Any, O]
-
-
-class FV:
-    def __init__(self, v: Any | Exception) -> None:
-        self.v: Final = v
-
-
-class InProcess[I: Kind | Callable[[], Any], O]:
-    def __init__(
+class Coroutine[I, O](Protocol):
+    def resume(
         self,
-        coro: Computation[I, O] | I,
-    ) -> None:
-        self.coro: Final = coro
-
-        self.next: O | Exception | Promise | int | None = None
-        self.final: FV | None = None
-
-        self._pend: list[Promise] = []
-        self._final: FV | None = None
-
-    def send(self) -> Yieldable[I, O] | FV:
-        assert isinstance(self.coro, Generator), (
-            "can only run send in a computation that's a coroutine"
-        )
-
-        if self._final is not None:
-            if self._pend:
-                return self._pend.pop()
-            return self._final
-
-        try:
-            match self.next:
-                case Exception():
-                    yielded = self.coro.throw(self.next)
-                case Promise():
-                    self._pend.append(self.next)
-                    yielded = self.coro.send(self.next)
-                case _:
-                    yielded = self.coro.send(self.next)
-        except StopIteration as e:
-            yielded = FV(e.value)
-        except Exception as e:
-            yielded = FV(e)
-
-        match yielded:
-            case Promise():
-                with contextlib.suppress(ValueError):
-                    self._pend.remove(yielded)
-                return yielded
-            case FV():
-                self._final = yielded
-                if self._pend:
-                    return self._pend.pop()
-                return self._final
-            case _:
-                return yielded
+    ) -> tuple[
+        I | None,
+        Promise[O] | None,
+        Coroutine[I, O] | None,
+        Completable | None,
+        bool,
+    ]: ...
+    def set_time(self, time: int) -> None: ...
 
 
-class Scheduler[I: Kind | Callable[[], Any], O]:
-    def __init__(self, aio: aio.AIO, size: int) -> None:
-        self._aio: Final = aio
-        self._in: Final = queue.Queue[tuple[InProcess[I, O], Future[O]]](size)
+class Promise[T](Protocol):
+    def complete(self, v: T | Exception) -> None: ...
 
-        self._running: deque[InProcess[I, O] | tuple[InProcess[I, O], Future[O]]] = deque()
-        self._awaiting: dict[InProcess[I, O], InProcess[I, O] | None] = {}
 
-        self._p_to_comp: dict[Promise, InProcess[I, O]] = {}
-        self._comp_to_f: dict[InProcess[I, O], Future[O]] = {}
+class Completable(Protocol):
+    def pending(self) -> bool: ...
+    def completed(self) -> bool: ...
 
-    def add(self, c: Computation[I, O] | I) -> Future[O]:
-        f = Future[O]()
-        self._in.put_nowait((InProcess(c), f))
-        return f
 
-    def shutdown(self) -> None:
-        self._aio.shutdown()
-        self._in.shutdown()
-        self._in.join()
-        assert len(self._running) == 0, f"_running not empty: {len(self._running)}"
-        assert len(self._awaiting) == 0, f"_awaiting not empty: {len(self._awaiting)}"
-        assert len(self._p_to_comp) == 0, f"_p_to_comp not empty: {len(self._p_to_comp)}"
-        assert len(self._comp_to_f) == 0, f"_comp_to_f not empty: {len(self._comp_to_f)}"
+@dataclass(frozen=True)
+class AwaitingCoroutine[I, O]:
+    coroutine: Coroutine[I, O]
+    on: Completable
 
-    def run_until_blocked(self, time: int) -> None:
-        assert len(self._running) == 0, f"_running not empty: {len(self._running)}"
 
-        qsize = self._in.qsize()
-        for _ in range(qsize):
-            try:
-                e = self._in.get_nowait()
-            except queue.Empty:
-                return
-            self._running.appendleft(e)
-            self._in.task_done()
+class Scheduler[I, O]:
+    def __init__(self, io: io.IO[I, O], size: int) -> None:
+        self._io: Final = io
+        self._in: Final = queue.Queue[Coroutine[I, O]](size)
+        self._runnable: list[Coroutine[I, O]] = []
+        self._awaiting: list[AwaitingCoroutine[I, O]] = []
+        self._closed: bool = False
 
-        self.tick(time)
-
-        assert len(self._running) == 0, f"_running not empty: {len(self._running)}"
-
-    def tick(self, time: int) -> None:
-        self._unblock()
-
-        while self.step(time):
-            continue
-
-    def step(self, time: int) -> bool:
-        try:
-            match item := self._running.pop():
-                case InProcess():
-                    comp = item
-                case InProcess(), Future():
-                    comp, future = item
-                    assert comp.next is None
-                    self._comp_to_f[comp] = future
-        except IndexError:
+    def add(self, c: Coroutine[I, O]) -> bool:
+        if self._closed:
             return False
 
-        assert comp.final is None
-
-        match comp.coro:
-            case Generator():
-                yielded = comp.send()
-
-                match yielded:
-                    case Promise():
-                        child_comp = self._p_to_comp.pop(yielded)
-
-                        match child_comp.final:
-                            case None:
-                                self._awaiting[child_comp] = comp
-                            case FV(v=v):
-                                comp.next = v
-                                self._running.appendleft(comp)
-
-                    case FV():
-                        self._set(comp, yielded)
-
-                    case Generator():
-                        child_comp = InProcess[I, O](yielded)
-                        promise = Promise()
-                        self._p_to_comp[promise] = child_comp
-                        self._running.appendleft(child_comp)
-
-                        comp.next = promise
-                        self._running.appendleft(comp)
-
-                    case Time():
-                        comp.next = time
-                        self._running.appendleft(comp)
-                    case _:
-                        child_comp = InProcess[I, O](yielded)
-                        promise = Promise()
-                        self._p_to_comp[promise] = child_comp
-                        self._aio.dispatch(
-                            SQE(yielded, lambda r, comp=child_comp: self._set(comp, FV(r))),
-                        )
-
-                        comp.next = promise
-                        self._running.appendleft(comp)
-
-            case _:
-                assert comp.next is None
-                assert comp not in self._awaiting
-
-                self._aio.dispatch(SQE(comp.coro, lambda r, comp=comp: self._set(comp, FV(r))))
-                self._awaiting[comp] = None
+        try:
+            self._in.put_nowait(c)
+        except queue.Full:
+            return False
         return True
 
-    def _unblock(self) -> None:
-        for blocking in list(self._awaiting):
-            if blocking.final is None:
-                continue
-            blocked = self._awaiting.pop(blocking)
-            if blocked is not None:
-                blocked.next = blocking.final.v
-                self._running.appendleft(blocked)
+    def run_until_blocked(self, time: int) -> None:
+        batch(self._in, self._in.qsize(), lambda c: self._runnable.append(c))
+        self.tick(time)
+        assert len(self._runnable) == 0, "runnable should be empty"
+
+    def tick(self, time: int) -> None:
+        self.unblock()
+
+        while True:
+            ok = self.step(time)
+            if not ok:
+                break
+
+    def step(self, time: int) -> bool:
+        coroutine = dequeue(self._runnable)
+        if coroutine is None:
+            return False
+        coroutine.set_time(time)
+
+        value, promise, spawn, wait, done = coroutine.resume()
+        if promise is not None:
+            self._io.dispatch(value, promise.complete)
+            self._runnable.append(coroutine)
+        elif spawn is not None:
+            self._runnable.append(spawn)
+            self._runnable.append(coroutine)
+        elif wait is not None:
+            self._awaiting.append(AwaitingCoroutine[I, O](coroutine, wait))
+        elif done:
+            self.unblock()
+        else:
+            msg = "unreachable"
+            raise AssertionError(msg)
+        return True
 
     def size(self) -> int:
-        return len(self._running) + len(self._awaiting) + self._in.qsize()
+        return len(self._runnable) + len(self._awaiting) + self._in.qsize()
 
-    def _set(self, comp: InProcess[I, O], final_value: FV) -> None:
-        assert comp.final is None
-        comp.final = final_value
-        if (f := self._comp_to_f.pop(comp, None)) is not None:
-            match comp.final.v:
-                case Exception():
-                    f.set_exception(comp.final.v)
-                case _:
-                    f.set_result(comp.final.v)
+    def shutdown(self) -> None:
+        self._closed = True
+        self._in.shutdown()
+        self._in.join()
+
+    def unblock(self) -> None:
+        i = 0
+        for coroutine in self._awaiting:
+            if coroutine.on.completed():
+                self._runnable.append(coroutine.coroutine)
+            else:
+                self._awaiting[i] = coroutine
+                i += 1
+
+        self._awaiting = self._awaiting[:i]
+
+
+def batch[T](c: queue.Queue[T], n: int, f: Callable[[T], None]) -> None:
+    for _ in range(n):
+        try:
+            item = c.get_nowait()
+        except queue.Empty:
+            return
+
+        f(item)
+        c.task_done()
+
+
+def dequeue[T](c: list[T]) -> T | None:
+    try:
+        item = c.pop(0)
+    except IndexError:
+        return None
+    return item
