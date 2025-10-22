@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import random
-import threading
 from collections.abc import Callable
 
 import pycoro
@@ -68,8 +67,7 @@ def main() -> None:
     fio = FIO[Callable[[], str], str](100)
 
     # Start I/O worker on a thread
-    t = threading.Thread(target=fio.worker, daemon=True)
-    t.start()
+    fio.worker()
 
     # Instantiate scheduler
     scheduler = pycoro.Scheduler[Callable[[], str], str](fio, 100)

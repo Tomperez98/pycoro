@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import queue
+import threading
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final
 
@@ -24,6 +25,7 @@ class FIO[I: Callable[[], Any], O]:
     def __init__(self, size: int) -> None:
         self._sq: Final = queue.Queue[SQE[I, O]](size)
         self._cq: Final = queue.Queue[CQE[O]](size)
+        self._threads: list[threading.Thread] = []
 
     def dispatch(self, v: I | None, cb: Callable[[O | Exception], None]) -> None:
         assert v is not None
@@ -37,9 +39,9 @@ class FIO[I: Callable[[], Any], O]:
         for _ in range(n):
             try:
                 cqes.append(self._cq.get_nowait())
-                self._cq.task_done()
             except queue.Empty:
                 break
+            self._cq.task_done()
         return cqes
 
     def shutdown(self) -> None:
@@ -47,8 +49,16 @@ class FIO[I: Callable[[], Any], O]:
         self._cq.shutdown()
         self._sq.join()
         self._cq.join()
+        for t in self._threads:
+            t.join()
+        self._threads.clear()
 
     def worker(self) -> None:
+        t = threading.Thread(target=self._worker, daemon=True)
+        t.start()
+        self._threads.append(t)
+
+    def _worker(self) -> None:
         while True:
             try:
                 sqe = self._sq.get()

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import threading
 from collections.abc import Callable
 
 from pycoro.io.fio import FIO
@@ -24,8 +23,9 @@ def test_fio() -> None:
     fio = FIO[Callable[[], str], str](size=100)
 
     # Spawn worker thread
-    worker_thread = threading.Thread(target=fio.worker, daemon=True)
-    worker_thread.start()
+    fio.worker()
+    fio.worker()
+    fio.worker()
 
     names = ["A", "B", "C", "D"]
     expected_greetings = ["Hello A", "Hello B", "Hello C", "Hello D"]
@@ -44,4 +44,3 @@ def test_fio() -> None:
 
     # Shutdown
     fio.shutdown()
-    worker_thread.join()
