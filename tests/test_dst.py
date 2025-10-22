@@ -130,7 +130,7 @@ def test_dst() -> None:
 
     # Execute SQL in a single connection
     database = "dst.db"
-    with sqlite3.connect(database) as conn:
+    with sqlite3.connect(database, autocommit=False) as conn:
         cursor = conn.cursor()
         for stmt in stmts:
             _ = cursor.execute(stmt)

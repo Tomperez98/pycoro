@@ -11,3 +11,4 @@ wheels/
 
 # cov
 .coverage
+*.lock

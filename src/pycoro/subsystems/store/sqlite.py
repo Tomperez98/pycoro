@@ -81,22 +81,15 @@ class StoreSqliteSubsystem:
             self._sq.put_nowait(time)
 
     def execute(self, transactions: list[Transaction[Any]]) -> list[list[Any]]:
-        conn = sqlite3.connect(self._db, autocommit=False)
-        try:
-            results: list[list[Any]] = []
+        results: list[list[Any]] = []
+        with sqlite3.connect(self._db, autocommit=False) as conn:
             for transaction in transactions:
                 assert len(transaction.cmds) > 0, "expect a command"
                 results.append(
-                    [self._cmd_handlers[type(cmd)](conn, cmd) for cmd in transaction.cmds],
+                    [self._cmd_handlers[type(cmd)](conn, cmd) for cmd in transaction.cmds]
                 )
-
             conn.commit()
-        except Exception:
-            conn.rollback()
-            conn.close()
-            raise
 
-        conn.close()
         return results
 
     def add_command_handler[T: Hashable](
