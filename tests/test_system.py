@@ -19,8 +19,6 @@ def coroutine(n: int) -> pycoro.CoroutineFunc[Callable[[], str], str, str]:
     def _(
         c: pycoro.Coroutine[Callable[[], str], str, str],
     ) -> str:
-        print("coroutine:", n)  # noqa: T201
-
         if n == 0:
             return ""
 
@@ -35,19 +33,16 @@ def coroutine(n: int) -> pycoro.CoroutineFunc[Callable[[], str], str, str]:
         try:
             foo = pycoro.wait(c, foo_future)
         except Exception:
-            print("failed fixing.")  # noqa: T201
             foo = f"foo.{n}"
 
         try:
             bar = pycoro.wait(c, bar_future)
         except Exception:
-            print("failed fixing.")  # noqa: T201
             bar = f"bar.{n}"
 
         try:
             baz = pycoro.wait(c, baz_future)
         except Exception:
-            print("failed fixing.")  # noqa: T201
             baz = f"baz.{n}"
 
         return f"{foo}:{bar}:{baz}"
@@ -55,7 +50,7 @@ def coroutine(n: int) -> pycoro.CoroutineFunc[Callable[[], str], str, str]:
     return _
 
 
-def main() -> None:
+def test_system() -> None:
     # Instantiate FIO
     fio = FIO[Callable[[], str], str](100)
 
@@ -79,13 +74,5 @@ def main() -> None:
     scheduler.shutdown()
     fio.shutdown()
 
-    # Await and print final result
-    try:
-        value = promise.result()
-        print("value:", value)  # noqa: T201
-    except Exception as e:
-        print("error:", e)  # noqa: T201
-
-
-if __name__ == "__main__":
-    main()
+    # Await and check final result
+    assert promise.result() == "foo.3:bar.3:foo.2:bar.2:foo.1:bar.1:"
