@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import queue
-import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Protocol, cast
 
@@ -19,6 +19,7 @@ class Coroutine[T, TNext, TReturn](Protocol):
     def get(self, key: str) -> Any: ...
     def resources(self) -> dict[str, Any]: ...
     def emit_and_wait(self, e: _Emit[T, TNext, TReturn]) -> None: ...
+    def executor(self) -> ThreadPoolExecutor: ...
 
 
 type CoroutineFunc[T, TNext, TReturn] = Callable[[Coroutine[T, TNext, TReturn]], TReturn]
@@ -34,17 +35,22 @@ class _Emit[T, TNext, TReturn]:
 
 
 class _Coroutine[T, TNext, TReturn]:
-    def __init__(self, f: CoroutineFunc[T, TNext, TReturn], r: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        f: CoroutineFunc[T, TNext, TReturn],
+        r: dict[str, Any],
+        executor: ThreadPoolExecutor,
+    ) -> None:
         self._f: Final = f
         self._r: Final = r
+        self._executor: Final = executor
         self.p: scheduler.Promise[TReturn] = promise.Promise[TReturn]()
         self._t: int
 
         self._c_i: Final = queue.Queue[Any]()
         self._c_o: Final = queue.Queue[_Emit[T, TNext, TReturn]]()
 
-        self._thread: Final = threading.Thread(target=self._worker, daemon=True)
-        self._thread.start()
+        _ = self._executor.submit(self._worker)
 
     def _worker(self) -> None:
         self._c_i.get()
@@ -93,6 +99,9 @@ class _Coroutine[T, TNext, TReturn]:
         self._c_o.put(e)
         self._c_i.get()
 
+    def executor(self) -> ThreadPoolExecutor:
+        return self._executor
+
 
 # Public API
 
@@ -104,10 +113,12 @@ class _Scheduler[I, O](Protocol):
     def size(self) -> int: ...
     def tick(self, time: int) -> None: ...
     def step(self, time: int) -> bool: ...
+    def executor(self) -> ThreadPoolExecutor: ...
 
 
 class Scheduler[I, O]:
     def __init__(self, io: io.IO[I, O], size: int) -> None:
+        self._executor: Final = ThreadPoolExecutor(max_workers=size)
         self._s: Final = scheduler.Scheduler[I, O](io, size)
 
     def add(self, c: scheduler.Coroutine[I, O]) -> bool:
@@ -117,7 +128,8 @@ class Scheduler[I, O]:
         return self._s.run_until_blocked(time)
 
     def shutdown(self) -> None:
-        return self._s.shutdown()
+        self._s.shutdown()
+        self._executor.shutdown(wait=True)
 
     def size(self) -> int:
         return self._s.size()
@@ -128,11 +140,14 @@ class Scheduler[I, O]:
     def step(self, time: int) -> bool:
         return self._s.step(time)
 
+    def executor(self) -> ThreadPoolExecutor:
+        return self._executor
+
 
 def add[T, TNext, TReturn](
     s: _Scheduler[T, TNext], f: CoroutineFunc[T, TNext, TReturn]
 ) -> promise.Promise[TReturn] | None:
-    coroutine = _Coroutine[T, TNext, TReturn](f, {})
+    coroutine = _Coroutine(f, {}, s.executor())
     if s.add(coroutine):
         return cast("promise.Promise[TReturn]", coroutine.p)
     return None
@@ -147,7 +162,7 @@ def emit[T, TNext, TReturn](c: Coroutine[T, TNext, TReturn], v: T) -> promise.Aw
 def spawn[T, TNext, TReturn, R](
     c: Coroutine[T, TNext, TReturn], f: CoroutineFunc[T, TNext, R]
 ) -> promise.Awaitable[R]:
-    coroutine = _Coroutine(f, c.resources())
+    coroutine = _Coroutine(f, c.resources(), c.executor())
     c.emit_and_wait(_Emit[T, TNext, TReturn](spawn=coroutine))
     return cast("promise.Promise[R]", coroutine.p)
 
