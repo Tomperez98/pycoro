@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import queue
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Any, Final, Protocol
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from concurrent.futures import Future
 
     from pycoro.io import io
 
@@ -15,27 +16,18 @@ class Coroutine[I, O](Protocol):
         self,
     ) -> tuple[
         I | None,
-        Promise[O] | None,
+        Future[O] | None,
         Coroutine[I, O] | None,
-        Completable | None,
+        Future[Any] | None,
         bool,
     ]: ...
     def set_time(self, time: int) -> None: ...
 
 
-class Promise[T](Protocol):
-    def complete(self, v: T | Exception) -> None: ...
-
-
-class Completable(Protocol):
-    def pending(self) -> bool: ...
-    def completed(self) -> bool: ...
-
-
 @dataclass(frozen=True)
 class AwaitingCoroutine[I, O]:
     coroutine: Coroutine[I, O]
-    on: Completable
+    on: Future[Any]
 
 
 class Scheduler[I, O]:
@@ -77,7 +69,16 @@ class Scheduler[I, O]:
 
         value, promise, spawn, wait, done = coroutine.resume()
         if promise is not None:
-            self._io.dispatch(value, promise.complete)
+
+            def complete(promise: Future[O], v: O | Exception) -> None:
+                match v:
+                    case Exception():
+                        promise.set_exception(v)
+                    case _:
+                        promise.set_result(v)
+
+            self._io.dispatch(value, lambda v, promise=promise: complete(promise, v))
+
             self._runnable.append(coroutine)
         elif spawn is not None:
             self._runnable.append(spawn)
@@ -102,7 +103,7 @@ class Scheduler[I, O]:
     def unblock(self) -> None:
         i = 0
         for coroutine in self._awaiting:
-            if coroutine.on.completed():
+            if coroutine.on.done():
                 self._runnable.append(coroutine.coroutine)
             else:
                 self._awaiting[i] = coroutine

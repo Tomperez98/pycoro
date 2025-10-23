@@ -16,7 +16,7 @@ def greet(string: str) -> str:
 
 
 def coroutine(n: int) -> pycoro.CoroutineFunc[Callable[[], str], str, str]:
-    def inner(
+    def _(
         c: pycoro.Coroutine[Callable[[], str], str, str],
     ) -> str:
         print("coroutine:", n)  # noqa: T201
@@ -25,41 +25,34 @@ def coroutine(n: int) -> pycoro.CoroutineFunc[Callable[[], str], str, str]:
             return ""
 
         # Yield two I/O operations
-        foo_promise = pycoro.emit(c, lambda: greet(f"foo.{n}"))
-        bar_promise = pycoro.emit(c, lambda: greet(f"bar.{n}"))
+        foo_future = pycoro.emit(c, lambda: greet(f"foo.{n}"))
+        bar_future = pycoro.emit(c, lambda: greet(f"bar.{n}"))
 
         # Spawn a new coroutine
-        baz_promise = pycoro.spawn(c, coroutine(n - 1))
+        baz_future = pycoro.spawn(c, coroutine(n - 1))
 
         # Await results
-        foo = pycoro.wait(c, foo_promise)
+        try:
+            foo = pycoro.wait(c, foo_future)
+        except Exception:
+            print("failed fixing.")  # noqa: T201
+            foo = f"foo.{n}"
 
-        # Error handling
-        match foo:
-            case Exception():
-                print("failed fixing.")  # noqa: T201
-                foo = f"foo.{n}"
-            case _:
-                print("succeed")  # noqa: T201
-        bar = pycoro.wait(c, bar_promise)
-        match bar:
-            case Exception():
-                print("failed fixing.")  # noqa: T201
-                bar = f"bar.{n}"
-            case _:
-                print("succeed")  # noqa: T201
+        try:
+            bar = pycoro.wait(c, bar_future)
+        except Exception:
+            print("failed fixing.")  # noqa: T201
+            bar = f"bar.{n}"
 
-        baz = pycoro.wait(c, baz_promise)
-        match baz:
-            case Exception():
-                print("failed fixing.")  # noqa: T201
-                baz = f"bar.{n}"
-            case _:
-                print("succeed")  # noqa: T201
+        try:
+            baz = pycoro.wait(c, baz_future)
+        except Exception:
+            print("failed fixing.")  # noqa: T201
+            baz = f"baz.{n}"
 
         return f"{foo}:{bar}:{baz}"
 
-    return inner
+    return _
 
 
 def main() -> None:
@@ -87,12 +80,11 @@ def main() -> None:
     fio.shutdown()
 
     # Await and print final result
-    value = promise.wait()
-    match value:
-        case Exception():
-            print("error:", value)  # noqa: T201
-        case _:
-            print("value:", value)  # noqa: T201
+    try:
+        value = promise.result()
+        print("value:", value)  # noqa: T201
+    except Exception as e:
+        print("error:", e)  # noqa: T201
 
 
 if __name__ == "__main__":

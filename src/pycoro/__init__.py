@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import queue
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Final, Protocol, cast
+from typing import TYPE_CHECKING, Any, Final, Protocol
 
-from pycoro import promise, scheduler
+from pycoro import scheduler
 
 if TYPE_CHECKING:
     from pycoro.io import io
@@ -28,9 +28,9 @@ type CoroutineFunc[T, TNext, TReturn] = Callable[[Coroutine[T, TNext, TReturn]],
 @dataclass(frozen=True)
 class _Emit[T, TNext, TReturn]:
     value: T | None = None
-    promise: scheduler.Promise[TNext] | None = None
+    promise: Future[TNext] | None = None
     spawn: scheduler.Coroutine[T, TNext] | None = None
-    wait: scheduler.Completable | None = None
+    wait: Future[Any] | None = None
     done: bool = False
 
 
@@ -44,7 +44,7 @@ class _Coroutine[T, TNext, TReturn]:
         self._f: Final = f
         self._r: Final = r
         self._executor: Final = executor
-        self.p: scheduler.Promise[TReturn] = promise.Promise[TReturn]()
+        self.p: Final = Future[TReturn]()
         self._t: int
 
         self._c_i: Final = queue.Queue[Any]()
@@ -55,13 +55,11 @@ class _Coroutine[T, TNext, TReturn]:
     def _worker(self) -> None:
         self._c_i.get()
 
-        v: TReturn | Exception
         try:
-            v = self._f(self)
+            self.p.set_result(self._f(self))
         except Exception as e:
-            v = e
+            self.p.set_exception(e)
 
-        self.p.complete(v)
         self._c_i.shutdown()
 
         self._c_o.put(_Emit[T, TNext, TReturn](done=True))
@@ -71,9 +69,9 @@ class _Coroutine[T, TNext, TReturn]:
         self,
     ) -> tuple[
         T | None,
-        scheduler.Promise[TNext] | None,
+        Future[TNext] | None,
         scheduler.Coroutine[T, TNext] | None,
-        scheduler.Completable | None,
+        Future[Any] | None,
         bool,
     ]:
         self._c_i.put(None)
@@ -146,34 +144,32 @@ class Scheduler[I, O]:
 
 def add[T, TNext, TReturn](
     s: _Scheduler[T, TNext], f: CoroutineFunc[T, TNext, TReturn]
-) -> promise.Promise[TReturn] | None:
+) -> Future[TReturn] | None:
     coroutine = _Coroutine(f, {}, s.executor())
     if s.add(coroutine):
-        return cast("promise.Promise[TReturn]", coroutine.p)
+        return coroutine.p
     return None
 
 
-def emit[T, TNext, TReturn](c: Coroutine[T, TNext, TReturn], v: T) -> promise.Awaitable[TNext]:
-    p = promise.Promise[TNext]()
+def emit[T, TNext, TReturn](c: Coroutine[T, TNext, TReturn], v: T) -> Future[TNext]:
+    p = Future[TNext]()
     c.emit_and_wait(_Emit[T, TNext, TReturn](value=v, promise=p))
     return p
 
 
 def spawn[T, TNext, TReturn, R](
     c: Coroutine[T, TNext, TReturn], f: CoroutineFunc[T, TNext, R]
-) -> promise.Awaitable[R]:
+) -> Future[R]:
     coroutine = _Coroutine(f, c.resources(), c.executor())
     c.emit_and_wait(_Emit[T, TNext, TReturn](spawn=coroutine))
-    return cast("promise.Promise[R]", coroutine.p)
+    return coroutine.p
 
 
-def wait[T, TNext, TReturn, P](
-    c: Coroutine[T, TNext, TReturn], p: promise.Awaitable[P]
-) -> P | Exception:
-    if p.pending():
+def wait[T, TNext, TReturn, P](c: Coroutine[T, TNext, TReturn], p: Future[P]) -> P:
+    if not p.done():
         c.emit_and_wait(_Emit[T, TNext, TReturn](wait=p))
-    assert p.completed(), "promise must be completed"
-    return p.value()
+    assert p.done(), "promise must be completed"
+    return p.result()
 
 
 def emit_and_wait[T, TNext, TReturn](c: Coroutine[T, TNext, TReturn], v: T) -> TNext | Exception:
