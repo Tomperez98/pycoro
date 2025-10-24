@@ -20,6 +20,9 @@ class CQE[O]:
     result: O | Exception
     cb: Callable[[O | Exception], None]
 
+    def invoke(self) -> None:
+        return self.cb(self.result)
+
 
 class FIO[I: Callable[[], Any], O]:
     def __init__(self, size: int) -> None:

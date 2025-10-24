@@ -39,7 +39,7 @@ def test_fio() -> None:
     while n < len(names):
         cqes = fio.dequeue(1)
         for cqe in cqes:
-            cqe.cb(cqe.result)
+            cqe.invoke()
             n += 1
 
     # Shutdown

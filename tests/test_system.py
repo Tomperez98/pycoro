@@ -67,7 +67,7 @@ def test_system() -> None:
     # Run scheduler until all tasks complete
     while scheduler.size() > 0:
         for cqe in fio.dequeue(3):
-            cqe.cb(cqe.result)
+            cqe.invoke()
         scheduler.run_until_blocked(0)
 
     # Shutdown scheduler
