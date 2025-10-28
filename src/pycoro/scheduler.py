@@ -70,14 +70,14 @@ class Scheduler[I, O]:
         value, promise, spawn, wait, done = coroutine.resume()
         if promise is not None:
 
-            def complete(promise: Future[O], v: O | Exception) -> None:
+            def _(promise: Future[O], v: O | Exception) -> None:
                 match v:
                     case Exception():
                         promise.set_exception(v)
                     case _:
                         promise.set_result(v)
 
-            self._io.dispatch(value, lambda v, promise=promise: complete(promise, v))
+            self._io.dispatch(value, lambda v, promise=promise: _(promise, v))
 
             self._runnable.append(coroutine)
         elif spawn is not None:

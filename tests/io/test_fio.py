@@ -6,17 +6,17 @@ from pycoro.io.fio import FIO
 
 
 def greet(name: str) -> Callable[[], str]:
-    def _inner() -> str:
+    def _() -> str:
         return f"Hello {name}"
 
-    return _inner
+    return _
 
 
 def callback_that_asserts(expected: str) -> Callable[[str | Exception], None]:
-    def _callback(value: str | Exception) -> None:
+    def _(value: str | Exception) -> None:
         assert value == expected, f"Greeting value should be `{expected}`, got `{value}`"
 
-    return _callback
+    return _
 
 
 def test_fio() -> None:
