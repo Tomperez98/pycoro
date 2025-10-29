@@ -25,9 +25,10 @@ def coroutine(n: int) -> pycoro.CoroutineFunc[Callable[[], str], str, str]:
         # Yield two I/O operations
         foo_future = pycoro.emit(c, lambda: greet(f"foo.{n}"))
         bar_future = pycoro.emit(c, lambda: greet(f"bar.{n}"))
-
-        # Spawn a new coroutine
-        baz_future = pycoro.spawn(c, coroutine(n - 1))
+        try:
+            baz = pycoro.spawn_and_wait(c, coroutine(n - 1))
+        except Exception:
+            baz = f"baz.{n}"
 
         # Await results
         try:
@@ -39,11 +40,6 @@ def coroutine(n: int) -> pycoro.CoroutineFunc[Callable[[], str], str, str]:
             bar = pycoro.wait(c, bar_future)
         except Exception:
             bar = f"bar.{n}"
-
-        try:
-            baz = pycoro.wait(c, baz_future)
-        except Exception:
-            baz = f"baz.{n}"
 
         return f"{foo}:{bar}:{baz}"
 

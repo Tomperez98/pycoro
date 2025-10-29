@@ -172,11 +172,11 @@ def wait[T, TNext, TReturn, P](c: Coroutine[T, TNext, TReturn], p: Future[P]) ->
     return p.result()
 
 
-def emit_and_wait[T, TNext, TReturn](c: Coroutine[T, TNext, TReturn], v: T) -> TNext | Exception:
+def emit_and_wait[T, TNext, TReturn](c: Coroutine[T, TNext, TReturn], v: T) -> TNext:
     return wait(c, emit(c, v))
 
 
 def spawn_and_wait[T, TNext, TReturn, R](
     c: Coroutine[T, TNext, TReturn], f: CoroutineFunc[T, TNext, R]
-) -> R | Exception:
+) -> R:
     return wait(c, spawn(c, f))
