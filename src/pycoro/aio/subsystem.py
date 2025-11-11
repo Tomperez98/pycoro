@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     from queue import Queue
 
-    from pycoro.internal.kernel import t_aio
-    from pycoro.internal.kernel.bus import CQE, SQE
-    from pycoro.internal.kernel.t_api.error import Error
+    from pycoro.kernel import t_aio
+    from pycoro.kernel.bus import CQE, SQE
+    from pycoro.kernel.t_api.error import Error
 
 
 class _SubsystemBase(Protocol):

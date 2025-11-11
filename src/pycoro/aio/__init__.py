@@ -4,15 +4,15 @@ from queue import Empty, Queue
 from threading import Event, Thread
 from typing import TYPE_CHECKING, Final, Protocol
 
-from pycoro.internal.kernel import t_aio
-from pycoro.internal.kernel.bus import CQE, SQE
-from pycoro.internal.kernel.t_api.error import Error
-from pycoro.internal.kernel.t_api.status import StatusCode
+from pycoro.kernel import t_aio
+from pycoro.kernel.bus import CQE, SQE
+from pycoro.kernel.t_api.error import Error
+from pycoro.kernel.t_api.status import StatusCode
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from pycoro.internal.aio.subsystem import Subsystem
+    from pycoro.aio.subsystem import Subsystem
 
 
 class AIO(Protocol):

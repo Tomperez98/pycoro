@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
-    from pycoro.internal.kernel.t_api.status import StatusCode
+    from pycoro.kernel.t_api.status import StatusCode
 
 
 class Error(Exception):

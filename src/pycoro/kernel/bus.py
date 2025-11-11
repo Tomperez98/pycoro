@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from pycoro.internal.kernel import t_aio, t_api
+from pycoro.kernel import t_aio, t_api
 
 if TYPE_CHECKING:
     from collections.abc import Callable

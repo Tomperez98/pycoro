@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from pycoro.internal.kernel.t_aio.echo import EchoCompletion, EchoSubmission
-    from pycoro.internal.kernel.t_aio.store import StoreCompletion, StoreSubmission
+    from pycoro.kernel.t_aio.echo import EchoCompletion, EchoSubmission
+    from pycoro.kernel.t_aio.store import StoreCompletion, StoreSubmission
 
 
 @dataclass(frozen=True)

@@ -5,12 +5,12 @@ from queue import Full, Queue, ShutDown
 from threading import Thread
 from typing import TYPE_CHECKING, Final
 
-from pycoro.internal.kernel import t_aio
-from pycoro.internal.kernel.bus import CQE, SQE
-from pycoro.internal.kernel.t_aio.echo import EchoCompletion, EchoSubmission
+from pycoro.kernel import t_aio
+from pycoro.kernel.bus import CQE, SQE
+from pycoro.kernel.t_aio.echo import EchoCompletion, EchoSubmission
 
 if TYPE_CHECKING:
-    from pycoro.internal.aio import AIO
+    from pycoro.aio import AIO
 
 
 @dataclass(frozen=True)
@@ -26,7 +26,7 @@ class Echo:
         self.aio: Final = aio
         self.sq: Final = Queue[SQE[t_aio.Submission, t_aio.Completion]](config.size)
         self.workers: list[Thread] = [
-            Thread(target=self.worker, daemon=True) for _ in range(config.workers)
+            Thread(target=self._worker, daemon=True) for _ in range(config.workers)
         ]
 
     def kind(self) -> str:
@@ -55,27 +55,25 @@ class Echo:
     def flush(self, time: int) -> None:  # pyright: ignore[reportUnusedParameter]
         return None
 
+    def _process(
+        self, sqe: SQE[t_aio.Submission, t_aio.Completion]
+    ) -> CQE[t_aio.Submission, t_aio.Completion]:
+        assert isinstance(sqe.submission.value, EchoSubmission)
+        assert self.kind() == sqe.submission.value.kind()
+
+        return CQE(
+            sqe.id,
+            sqe.callback,
+            t_aio.Completion(sqe.submission.tags, EchoCompletion(sqe.submission.value.data)),
+        )
+
     def process(
         self, sqes: list[SQE[t_aio.Submission, t_aio.Completion]]
     ) -> list[CQE[t_aio.Submission, t_aio.Completion]]:
         assert len(self.workers) > 0, "must be at least one worker"
-        cqes: list[CQE[t_aio.Submission, t_aio.Completion]] = []
-        for sqe in sqes:
-            assert isinstance(sqe.submission.value, EchoSubmission)
-            assert self.kind() == sqe.submission.value.kind()
-            cqes.append(
-                CQE(
-                    sqe.id,
-                    sqe.callback,
-                    t_aio.Completion(
-                        sqe.submission.tags, EchoCompletion(sqe.submission.value.data)
-                    ),
-                )
-            )
+        return [self._process(sqe) for sqe in sqes]
 
-        return cqes
-
-    def worker(self) -> None:
+    def _worker(self) -> None:
         while True:
             try:
                 sqe = self.sq.get()
@@ -83,5 +81,5 @@ class Echo:
                 break
 
             assert sqe.submission.value.kind() == self.kind()
-            self.aio.enqueue_cqe(self.process([sqe])[0])
+            self.aio.enqueue_cqe(self._process(sqe))
             self.sq.task_done()

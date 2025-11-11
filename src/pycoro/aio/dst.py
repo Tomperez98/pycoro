@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Final
 
-from pycoro.internal import util
-from pycoro.internal.kernel.bus import CQE, SQE
+from pycoro import util
+from pycoro.kernel.bus import CQE, SQE
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from random import Random
     from threading import Event
 
-    from pycoro.internal.aio import AIO
-    from pycoro.internal.aio.subsystem import SubsystemDST
-    from pycoro.internal.kernel import t_aio
+    from pycoro.aio import AIO
+    from pycoro.aio.subsystem import SubsystemDST
+    from pycoro.kernel import t_aio
 
 
 def new(r: Random, p: float) -> AIO:
