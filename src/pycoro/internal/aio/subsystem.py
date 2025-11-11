@@ -8,7 +8,6 @@ if TYPE_CHECKING:
     from pycoro.internal.kernel import t_aio
     from pycoro.internal.kernel.bus import CQE, SQE
     from pycoro.internal.kernel.t_api.error import Error
-    from pycoro.internal.typing import Kind
 
 
 class _SubsystemBase(Protocol):
@@ -18,11 +17,11 @@ class _SubsystemBase(Protocol):
 
 
 class Subsystem(_SubsystemBase, Protocol):
-    def enqueue(self, sqe: SQE[t_aio.Submission[Kind], t_aio.Completion[Kind]]) -> bool: ...
+    def enqueue(self, sqe: SQE[t_aio.Submission, t_aio.Completion]) -> bool: ...
     def flush(self, time: int) -> None: ...
 
 
 class SubsystemDST(_SubsystemBase, Protocol):
     def process(
-        self, sqes: list[SQE[t_aio.Submission[Kind], t_aio.Completion[Kind]]]
-    ) -> list[CQE[t_aio.Submission[Kind], t_aio.Completion[Kind]]]: ...
+        self, sqes: list[SQE[t_aio.Submission, t_aio.Completion]]
+    ) -> list[CQE[t_aio.Submission, t_aio.Completion]]: ...

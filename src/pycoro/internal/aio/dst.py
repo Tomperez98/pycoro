@@ -13,7 +13,6 @@ if TYPE_CHECKING:
     from pycoro.internal.aio import AIO
     from pycoro.internal.aio.subsystem import SubsystemDST
     from pycoro.internal.kernel import t_aio
-    from pycoro.internal.typing import Kind
 
 
 def new(r: Random, p: float) -> AIO:
@@ -24,8 +23,8 @@ class _AIODst:
     def __init__(self, r: Random, p: float) -> None:
         self.r: Final = r
         self.p: Final = p
-        self.sqes: list[SQE[t_aio.Submission[Kind], t_aio.Completion[Kind]]] = []
-        self.cqes: list[CQE[t_aio.Submission[Kind], t_aio.Completion[Kind]]] = []
+        self.sqes: list[SQE[t_aio.Submission, t_aio.Completion]] = []
+        self.cqes: list[CQE[t_aio.Submission, t_aio.Completion]] = []
         self.subsystems: dict[str, SubsystemDST] = {}
 
     def add_subsystem(self, subsystem: SubsystemDST) -> None:
@@ -48,15 +47,15 @@ class _AIODst:
     def signal(self, cancel: Event) -> Event:  # pyright: ignore[reportUnusedParameter]
         raise NotImplementedError
 
-    def flush(self, time: int) -> None:
-        flush: dict[str, list[SQE[t_aio.Submission[Kind], t_aio.Completion[Kind]]]] = {}
+    def flush(self, time: int) -> None:  # pyright: ignore[reportUnusedParameter]
+        flush: dict[str, list[SQE[t_aio.Submission, t_aio.Completion]]] = {}
         for sqe in self.sqes:
             flush.setdefault(sqe.submission.value.kind(), []).append(sqe)
 
         for sqes in util.ordered_range_kv(flush):
             subsystem = self.subsystems.get(sqes.key)
             assert subsystem is not None, "invalid aio submission"
-            to_process: list[SQE[t_aio.Submission[Kind], t_aio.Completion[Kind]]] = []
+            to_process: list[SQE[t_aio.Submission, t_aio.Completion]] = []
             pre_failure: dict[int, bool] = {}
             post_failure: dict[int, bool] = {}
             n: int = 0
@@ -90,20 +89,20 @@ class _AIODst:
 
     def dispatch(
         self,
-        v: t_aio.Submission[Kind] | None,
-        cb: Callable[[t_aio.Completion[Kind] | Exception], None],
+        v: t_aio.Submission | None,
+        cb: Callable[[t_aio.Completion | Exception], None],
     ) -> None:
         assert v is not None
         assert v.tags.get("id") is not None, "id tag must be set"
         self.enqueue_sqe(SQE(v.tags["id"], cb, v))
 
-    def enqueue_sqe(self, sqe: SQE[t_aio.Submission[Kind], t_aio.Completion[Kind]]) -> None:
+    def enqueue_sqe(self, sqe: SQE[t_aio.Submission, t_aio.Completion]) -> None:
         self.sqes.insert(self.r.randint(0, len(self.sqes)), sqe)
 
-    def enqueue_cqe(self, cqe: CQE[t_aio.Submission[Kind], t_aio.Completion[Kind]]) -> None:
+    def enqueue_cqe(self, cqe: CQE[t_aio.Submission, t_aio.Completion]) -> None:
         self.cqes.append(cqe)
 
-    def dequeue_cqe(self, n: int) -> list[CQE[t_aio.Submission[Kind], t_aio.Completion[Kind]]]:
+    def dequeue_cqe(self, n: int) -> list[CQE[t_aio.Submission, t_aio.Completion]]:
         cqes = self.cqes[: min(n, len(self.cqes))]
         self.cqes = self.cqes[min(n, len(self.cqes)) :]
         return cqes

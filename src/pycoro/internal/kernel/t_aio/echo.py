@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
 
 
 class _Kind:
-    def kind(self) -> Literal["echo"]:
+    def kind(self) -> str:
         return "echo"
 
 

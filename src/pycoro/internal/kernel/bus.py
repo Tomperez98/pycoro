@@ -4,14 +4,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from pycoro.internal.kernel import t_aio, t_api
-from pycoro.internal.typing import Kind
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-type Input = t_aio.Submission[Kind] | t_api.Request
-type Output = t_aio.Completion[Kind] | t_api.Response
+type Input = t_aio.Submission | t_api.Request
+type Output = t_aio.Completion | t_api.Response
 
 
 @dataclass(frozen=True)
