@@ -20,7 +20,11 @@ class Config:
     workers: int = 1
 
 
-class Echo:
+def new(aio: AIO, config: Config) -> _Echo:
+    return _Echo(aio, config)
+
+
+class _Echo:
     def __init__(self, aio: AIO, config: Config) -> None:
         self.config: Final = config
         self.aio: Final = aio

@@ -11,7 +11,7 @@ class KV[K: str, V]:
 
 def ordered_range_sort[K: str, V](m: dict[K, V]) -> list[K]:
     keys = list(m.keys())
-    keys.sort()  # in-place sort; works better with type checkers than sorted(dict_keys)
+    keys.sort()
     for i in range(len(keys) - 1):
         assert keys[i] <= keys[i + 1], "slice not sorted"
     return keys

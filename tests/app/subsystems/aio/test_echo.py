@@ -25,7 +25,7 @@ def callback_that_asserts(expected: str) -> Callable[[Completion | Exception], N
 
 @pytest.mark.parametrize("test_data", ["foo", "bar", "baz"])
 def test_echo(test_data: str) -> None:
-    subsystem = echo.Echo(aio.new(100), echo.Config(workers=1))
+    subsystem = echo.new(aio.new(100), echo.Config(workers=1))
 
     # Equivalent to: assert.Len(t, echo.workers, 1)
     assert len(subsystem.workers) == 1
