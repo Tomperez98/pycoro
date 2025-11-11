@@ -8,10 +8,10 @@ from pycoro.internal.typing import Kind
 @dataclass(frozen=True)
 class Submission[T: Kind]:
     tags: dict[str, str]
-    kind: T
+    value: T
 
 
 @dataclass(frozen=True)
 class Completion[T: Kind]:
     tags: dict[str, str]
-    kind: T
+    value: T

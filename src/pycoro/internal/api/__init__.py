@@ -20,7 +20,7 @@ class API(Protocol):
     def shutdown(self) -> None: ...
     def done(self) -> bool: ...
     @property
-    def errors(self) -> Queue[Exception]: ...
+    def errors(self) -> Queue[APIError]: ...
     def signal(self, cancel: Event) -> Event: ...
     def enqueue_sqe(self, sqe: SQE[t_api.Request, t_api.Response]) -> None: ...
     def dequeue_sqe(self, n: int) -> list[SQE[t_api.Request, t_api.Response]]: ...
@@ -40,7 +40,7 @@ class _API:
         self.buffer: SQE[t_api.Request, t_api.Response] | None = None
         self.subsystems: list[Subsystem] = []
         self.completed: bool = False
-        self.errors: Final = Queue[Exception]()
+        self.errors: Final = Queue[APIError]()
         self.threads: list[Thread] = []
 
     def add_subsystems(self, subsystem: Subsystem) -> None:
@@ -81,7 +81,6 @@ class _API:
             return signal_event
 
         def wait_for_signal() -> None:
-            nonlocal signal_event
             while not cancel.is_set():
                 try:
                     sqe = self.sq.get(timeout=0.1)
