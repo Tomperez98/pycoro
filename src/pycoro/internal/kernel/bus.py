@@ -9,7 +9,6 @@ from pycoro.internal.typing import Kind
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from pycoro.internal.kernel.t_api.error import Error
 
 type Input = t_aio.Submission[Kind] | t_api.Request
 type Output = t_aio.Completion[Kind] | t_api.Response
@@ -17,16 +16,16 @@ type Output = t_aio.Completion[Kind] | t_api.Response
 
 @dataclass(frozen=True)
 class SQE[I: Input, O: Output]:
-    id: str
-    callback: Callable[[O | Error], None]
+    id: str | None
+    callback: Callable[[O | Exception], None]
     submission: I
 
 
-@dataclass(frozen=True)
+@dataclass
 class CQE[I: Input, O: Output]:
-    id: str
-    callback: Callable[[O | Error], None]
-    completion: O | Error
+    id: str | None
+    callback: Callable[[O | Exception], None]
+    completion: O | Exception
 
     def invoke(self) -> None:
         return self.callback(self.completion)
