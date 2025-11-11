@@ -7,7 +7,6 @@ if TYPE_CHECKING:
 
 
 class APIError(Exception):
-
     def __init__(self, code: StatusCode, original_error: Exception | None = None) -> None:
         self.code: Final = code
         self.original_error: Final = original_error
