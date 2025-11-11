@@ -7,13 +7,13 @@ if TYPE_CHECKING:
 
     from pycoro.internal.kernel import t_aio
     from pycoro.internal.kernel.bus import CQE, SQE
-    from pycoro.internal.kernel.t_api.error import APIError
+    from pycoro.internal.kernel.t_api.error import Error
     from pycoro.internal.typing import Kind
 
 
 class _SubsystemBase(Protocol):
     def kind(self) -> str: ...
-    def start(self, errors: Queue[APIError]) -> None: ...
+    def start(self, errors: Queue[Error]) -> None: ...
     def stop(self) -> None: ...
 
 

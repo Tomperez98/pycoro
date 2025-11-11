@@ -6,7 +6,7 @@ if TYPE_CHECKING:
     from pycoro.internal.kernel.t_api.status import StatusCode
 
 
-class APIError(Exception):
+class Error(Exception):
     def __init__(self, code: StatusCode, original_error: Exception | None = None) -> None:
         self.code: Final = code
         self.original_error: Final = original_error
@@ -16,8 +16,8 @@ class APIError(Exception):
         return self.original_error
 
     def is_(self, target: Exception) -> bool:
-        return isinstance(target, APIError)
+        return isinstance(target, Error)
 
 
-def new_error(code: StatusCode, err: Exception | None = None) -> APIError:
-    return APIError(code, err)
+def new_error(code: StatusCode, err: Exception | None = None) -> Error:
+    return Error(code, err)

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Final, Protocol
 
 from pycoro.internal.kernel import t_aio
 from pycoro.internal.kernel.bus import CQE, SQE
-from pycoro.internal.kernel.t_api.error import APIError
+from pycoro.internal.kernel.t_api.error import Error
 from pycoro.internal.kernel.t_api.status import StatusCode
 from pycoro.internal.typing import Kind
 
@@ -21,7 +21,7 @@ class AIO(Protocol):
     def stop(self) -> None: ...
     def shutdown(self) -> None: ...
     @property
-    def errors(self) -> Queue[APIError]: ...
+    def errors(self) -> Queue[Error]: ...
     def signal(self, cancel: Event) -> Event: ...
     def flush(self, time: int) -> None: ...
     def dispatch(
@@ -43,7 +43,7 @@ class _AIO:
         self.cq: Final = Queue[CQE[t_aio.Submission[Kind], t_aio.Completion[Kind]]](size)
         self.buffer: CQE[t_aio.Submission[Kind], t_aio.Completion[Kind]] | None = None
         self.subsystems: dict[str, Subsystem] = {}
-        self.errors: Final = Queue[APIError]()
+        self.errors: Final = Queue[Error]()
 
     def add_subsystem(self, subsystem: Subsystem) -> None:
         self.subsystems[subsystem.kind()] = subsystem
@@ -76,7 +76,7 @@ class _AIO:
         assert subsystem is not None, "invalid aio submission"
 
         if not subsystem.enqueue(sqe):
-            sqe.callback(APIError(StatusCode.STATUS_AIO_SUBMISSION_QUEUE_FULL))
+            sqe.callback(Error(StatusCode.STATUS_AIO_SUBMISSION_QUEUE_FULL))
 
     def enqueue_cqe(self, cqe: CQE[t_aio.Submission[Kind], t_aio.Completion[Kind]]) -> None:
         self.cq.put(cqe)

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Final, Protocol
 
 from pycoro.internal.kernel import t_api
 from pycoro.internal.kernel.bus import SQE
-from pycoro.internal.kernel.t_api.error import APIError
+from pycoro.internal.kernel.t_api.error import Error
 from pycoro.internal.kernel.t_api.status import StatusCode
 
 if TYPE_CHECKING:
@@ -20,7 +20,7 @@ class API(Protocol):
     def shutdown(self) -> None: ...
     def done(self) -> bool: ...
     @property
-    def errors(self) -> Queue[APIError]: ...
+    def errors(self) -> Queue[Error]: ...
     def signal(self, cancel: Event) -> Event: ...
     def enqueue_sqe(self, sqe: SQE[t_api.Request, t_api.Response]) -> None: ...
     def dequeue_sqe(self, n: int) -> list[SQE[t_api.Request, t_api.Response]]: ...
@@ -40,7 +40,7 @@ class _API:
         self.buffer: SQE[t_api.Request, t_api.Response] | None = None
         self.subsystems: list[Subsystem] = []
         self.completed: bool = False
-        self.errors: Final = Queue[APIError]()
+        self.errors: Final = Queue[Error]()
         self.threads: list[Thread] = []
 
     def add_subsystems(self, subsystem: Subsystem) -> None:
@@ -102,20 +102,20 @@ class _API:
         assert sqe.submission.metadata is not None, "submission tags must not be None"
 
         if self.completed:
-            sqe.callback(APIError(StatusCode.STATUS_SYSTEM_SHUTTING_DOWN))
+            sqe.callback(Error(StatusCode.STATUS_SYSTEM_SHUTTING_DOWN))
             return
 
         try:
             sqe.submission.validate()
         except Exception as err:
-            sqe.callback(APIError(StatusCode.STATUS_FIELD_VALIDATION_ERROR, err))
+            sqe.callback(Error(StatusCode.STATUS_FIELD_VALIDATION_ERROR, err))
             return
 
         # Try to enqueue without blocking
         try:
             self.sq.put_nowait(sqe)
         except Full:
-            sqe.callback(APIError(StatusCode.STATUS_API_SUBMISSION_QUEUE_FULL))
+            sqe.callback(Error(StatusCode.STATUS_API_SUBMISSION_QUEUE_FULL))
 
     def dequeue_sqe(self, n: int) -> list[SQE[t_api.Request, t_api.Response]]:
         sqes: list[SQE[t_api.Request, t_api.Response]] = []
