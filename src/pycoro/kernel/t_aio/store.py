@@ -5,7 +5,7 @@ from typing import Literal, Protocol
 
 
 class _Kind:
-    def kind(self) -> str:
+    def kind(self) -> Literal["store"]:
         return "store"
 
 

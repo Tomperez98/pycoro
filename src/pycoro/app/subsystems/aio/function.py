@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from queue import Full, Queue, ShutDown
 from threading import Thread
-from typing import TYPE_CHECKING, Final, Literal
+from typing import TYPE_CHECKING, Any, Final, Literal
 
 from pycoro.kernel import t_aio
 from pycoro.kernel.bus import CQE, SQE
-from pycoro.kernel.t_aio.echo import EchoCompletion, EchoSubmission
+from pycoro.kernel.t_aio.function import FunctionCompletion, FunctionSubmission
 
 if TYPE_CHECKING:
     from pycoro.aio import AIO
@@ -17,15 +17,14 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class Config:
     size: int = 100
-    batch_size: int = 100
     workers: int = 1
 
 
-def new(aio: AIO, config: Config) -> _Echo:
-    return _Echo(aio, config)
+def new(aio: AIO, config: Config) -> _Function:
+    return _Function(aio, config)
 
 
-class _Echo:
+class _Function:
     def __init__(self, aio: AIO, config: Config) -> None:
         self.config: Final = config
         self.aio: Final = aio
@@ -34,8 +33,8 @@ class _Echo:
             Thread(target=self._worker, daemon=True) for _ in range(config.workers)
         ]
 
-    def kind(self) -> Literal["echo"]:
-        return "echo"
+    def kind(self) -> Literal["function"]:
+        return "function"
 
     def start(self, errors: Queue[Error] | None) -> None:  # pyright: ignore[reportUnusedParameter]
         for w in self.workers:
@@ -63,13 +62,18 @@ class _Echo:
     def _process(
         self, sqe: SQE[t_aio.Submission, t_aio.Completion]
     ) -> CQE[t_aio.Submission, t_aio.Completion]:
-        assert isinstance(sqe.submission.value, EchoSubmission)
+        assert isinstance(sqe.submission.value, FunctionSubmission)
         assert self.kind() == sqe.submission.value.kind()
 
+        result: Any | Exception
+        try:
+            result = sqe.submission.value.fn()
+        except Exception as e:
+            result = e
         return CQE(
             sqe.id,
             sqe.callback,
-            t_aio.Completion(sqe.submission.tags, EchoCompletion(sqe.submission.value.data)),
+            t_aio.Completion(sqe.submission.tags, FunctionCompletion(result)),
         )
 
     def process(

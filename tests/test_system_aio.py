@@ -4,9 +4,43 @@ from uuid import uuid4
 
 import pycoro
 from pycoro import aio
-from pycoro.app.subsystems.aio import echo
+from pycoro.app.subsystems.aio import echo, function
 from pycoro.kernel.t_aio import Completion, Submission
 from pycoro.kernel.t_aio.echo import EchoCompletion, EchoSubmission
+from pycoro.kernel.t_aio.function import FunctionCompletion, FunctionSubmission
+
+
+def function_coroutine(n: int) -> pycoro.CoroutineFunc[Submission, Completion, str]:
+    def _(
+        c: pycoro.Coroutine[Submission, Completion, str],
+    ) -> str:
+        if n == 0:
+            return ""
+
+        # Yield two I/O operations
+        id1 = uuid4().hex
+        id2 = uuid4().hex
+
+        foo_future = pycoro.emit(c, Submission({"id": id1}, FunctionSubmission(lambda: f"foo.{n}")))
+        bar_future = pycoro.emit(c, Submission({"id": id2}, FunctionSubmission(lambda: f"bar.{n}")))
+        baz = pycoro.spawn_and_wait(c, function_coroutine(n - 1))
+
+        # Await results
+        foo_completion = pycoro.wait(c, foo_future)
+        assert isinstance(foo_completion.value, FunctionCompletion)
+        assert foo_completion.tags == {"id": id1}
+        foo = foo_completion.value.result
+        assert isinstance(foo, str)
+
+        bar_completion = pycoro.wait(c, bar_future)
+        assert isinstance(bar_completion.value, FunctionCompletion)
+        assert bar_completion.tags == {"id": id2}
+        bar = bar_completion.value.result
+        assert isinstance(bar, str)
+
+        return f"{foo}:{bar}:{baz}"
+
+    return _
 
 
 def echo_coroutine(n: int) -> pycoro.CoroutineFunc[Submission, Completion, str]:
@@ -44,14 +78,17 @@ def test_system_aio() -> None:
     # Instantiate IO
     io = aio.new(100)
     io.add_subsystem(echo.new(io, echo.Config()))
+    io.add_subsystem(function.new(io, function.Config()))
     io.start()
 
     # Instantiate scheduler
     scheduler = pycoro.Scheduler(io, 100)
 
     # Add coroutine to scheduler
-    promise = pycoro.add(scheduler, echo_coroutine(5))
-    assert promise
+    echo_promise = pycoro.add(scheduler, echo_coroutine(5))
+    function_promise = pycoro.add(scheduler, function_coroutine(5))
+    assert echo_promise is not None
+    assert function_promise is not None
 
     # Run scheduler until all tasks complete
     i = 0
@@ -66,4 +103,4 @@ def test_system_aio() -> None:
     io.shutdown()
 
     # Await and check final result
-    assert promise.result() == "foo.5:bar.5:foo.4:bar.4:foo.3:bar.3:foo.2:bar.2:foo.1:bar.1:"
+    assert echo_promise.result() == function_promise.result()
