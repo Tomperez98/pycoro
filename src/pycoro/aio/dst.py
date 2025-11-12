@@ -10,12 +10,11 @@ if TYPE_CHECKING:
     from random import Random
     from threading import Event
 
-    from pycoro.aio import AIO
     from pycoro.aio.subsystem import SubsystemDST
     from pycoro.kernel import t_aio
 
 
-def new(r: Random, p: float) -> AIO:
+def new(r: Random, p: float) -> _AIODst:
     return _AIODst(r, p)
 
 

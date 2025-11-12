@@ -11,6 +11,7 @@ from pycoro.kernel.t_aio.echo import EchoCompletion, EchoSubmission
 
 if TYPE_CHECKING:
     from pycoro.aio import AIO
+    from pycoro.kernel.t_api.error import Error
 
 
 @dataclass(frozen=True)
@@ -36,7 +37,7 @@ class _Echo:
     def kind(self) -> str:
         return "echo"
 
-    def start(self) -> None:
+    def start(self, errors: Queue[Error] | None) -> None:  # pyright: ignore[reportUnusedParameter]
         for w in self.workers:
             w.start()
 
@@ -83,7 +84,6 @@ class _Echo:
                 sqe = self.sq.get()
             except ShutDown:
                 break
-
             assert sqe.submission.value.kind() == self.kind()
             self.aio.enqueue_cqe(self._process(sqe))
             self.sq.task_done()

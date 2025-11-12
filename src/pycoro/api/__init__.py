@@ -30,7 +30,7 @@ class API(Protocol):
     ) -> CQE[t_api.Request, t_api.Response]: ...
 
 
-def new(size: int) -> API:
+def new(size: int) -> _API:
     return _API(size)
 
 

@@ -46,7 +46,7 @@ def coroutine(n: int) -> pycoro.CoroutineFunc[Callable[[], str], str, str]:
     return _
 
 
-def test_system() -> None:
+def test_system_io() -> None:
     # Instantiate FIO
     fio = FIO[Callable[[], str], str](100)
 

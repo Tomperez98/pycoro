@@ -33,7 +33,7 @@ class AIO(Protocol):
     def dequeue_cqe(self, n: int) -> list[CQE[t_aio.Submission, t_aio.Completion]]: ...
 
 
-def new(size: int) -> AIO:
+def new(size: int) -> _AIO:
     return _AIO(size)
 
 
