@@ -22,10 +22,7 @@ def echo_coroutine(n: int) -> pycoro.CoroutineFunc[Submission, Completion, str]:
 
         foo_future = pycoro.emit(c, Submission({"id": id1}, EchoSubmission(f"foo.{n}")))
         bar_future = pycoro.emit(c, Submission({"id": id2}, EchoSubmission(f"bar.{n}")))
-        try:
-            baz = pycoro.spawn_and_wait(c, echo_coroutine(n - 1))
-        except Exception:
-            baz = f"baz.{n}"
+        baz = pycoro.spawn_and_wait(c, echo_coroutine(n - 1))
 
         # Await results
         foo_completion = pycoro.wait(c, foo_future)
