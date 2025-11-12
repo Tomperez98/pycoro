@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pycoro
 from pycoro import aio
 from pycoro.app.subsystems.aio import echo
@@ -15,8 +17,11 @@ def echo_coroutine(n: int) -> pycoro.CoroutineFunc[Submission, Completion, str]:
             return ""
 
         # Yield two I/O operations
-        foo_future = pycoro.emit(c, Submission({"id": "foo"}, EchoSubmission(f"foo.{n}")))
-        bar_future = pycoro.emit(c, Submission({"id": "bar"}, EchoSubmission(f"bar.{n}")))
+        id1 = uuid4().hex
+        id2 = uuid4().hex
+
+        foo_future = pycoro.emit(c, Submission({"id": id1}, EchoSubmission(f"foo.{n}")))
+        bar_future = pycoro.emit(c, Submission({"id": id2}, EchoSubmission(f"bar.{n}")))
         try:
             baz = pycoro.spawn_and_wait(c, echo_coroutine(n - 1))
         except Exception:
@@ -25,12 +30,12 @@ def echo_coroutine(n: int) -> pycoro.CoroutineFunc[Submission, Completion, str]:
         # Await results
         foo_completion = pycoro.wait(c, foo_future)
         assert isinstance(foo_completion.value, EchoCompletion)
-        assert foo_completion.tags == {"id": "foo"}
+        assert foo_completion.tags == {"id": id1}
         foo = foo_completion.value.data
 
         bar_completion = pycoro.wait(c, bar_future)
         assert isinstance(bar_completion.value, EchoCompletion)
-        assert bar_completion.tags == {"id": "bar"}
+        assert bar_completion.tags == {"id": id2}
         bar = bar_completion.value.data
 
         return f"{foo}:{bar}:{baz}"
