@@ -5,7 +5,6 @@ from queue import Full, Queue, ShutDown
 from threading import Thread
 from typing import TYPE_CHECKING, Any, Final, Literal
 
-from pycoro.kernel import t_aio
 from pycoro.kernel.bus import CQE, SQE
 from pycoro.kernel.t_aio.function import FunctionCompletion, FunctionSubmission
 
@@ -28,7 +27,7 @@ class _Function:
     def __init__(self, aio: AIO, config: Config) -> None:
         self.config: Final = config
         self.aio: Final = aio
-        self.sq: Final = Queue[SQE[t_aio.Submission, t_aio.Completion]](config.size)
+        self.sq: Final = Queue[SQE[FunctionSubmission, FunctionCompletion]](config.size)
         self.workers: list[Thread] = [
             Thread(target=self._worker, daemon=True) for _ in range(config.workers)
         ]
@@ -48,7 +47,7 @@ class _Function:
         self.workers.clear()
         self.sq.join()
 
-    def enqueue(self, sqe: SQE[t_aio.Submission, t_aio.Completion]) -> bool:
+    def enqueue(self, sqe: SQE[FunctionSubmission, FunctionCompletion]) -> bool:
         try:
             self.sq.put_nowait(sqe)
         except Full:
@@ -60,25 +59,23 @@ class _Function:
         return None
 
     def _process(
-        self, sqe: SQE[t_aio.Submission, t_aio.Completion]
-    ) -> CQE[t_aio.Submission, t_aio.Completion]:
-        assert isinstance(sqe.submission.value, FunctionSubmission)
-        assert self.kind() == sqe.submission.value.kind()
+        self, sqe: SQE[FunctionSubmission, FunctionCompletion]
+    ) -> CQE[FunctionSubmission, FunctionCompletion]:
+        assert self.kind() == sqe.submission.kind()
 
         result: Any | Exception
         try:
-            result = sqe.submission.value.fn()
+            result = sqe.submission.fn()
         except Exception as e:
             result = e
         return CQE(
-            sqe.id,
             sqe.callback,
-            t_aio.Completion(sqe.submission.tags, FunctionCompletion(result)),
+            FunctionCompletion(result),
         )
 
     def process(
-        self, sqes: list[SQE[t_aio.Submission, t_aio.Completion]]
-    ) -> list[CQE[t_aio.Submission, t_aio.Completion]]:
+        self, sqes: list[SQE[FunctionSubmission, FunctionCompletion]]
+    ) -> list[CQE[FunctionSubmission, FunctionCompletion]]:
         assert len(self.workers) > 0, "must be at least one worker"
         return [self._process(sqe) for sqe in sqes]
 
@@ -88,6 +85,6 @@ class _Function:
                 sqe = self.sq.get()
             except ShutDown:
                 break
-            assert sqe.submission.value.kind() == self.kind()
+            assert sqe.submission.kind() == self.kind()
             self.aio.enqueue_cqe(self._process(sqe))
             self.sq.task_done()

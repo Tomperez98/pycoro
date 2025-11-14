@@ -1,41 +1,30 @@
 from __future__ import annotations
 
-from uuid import uuid4
-
 import pycoro
 from pycoro import aio
 from pycoro.app.subsystems.aio import echo, function
-from pycoro.kernel.t_aio import Completion, Submission
 from pycoro.kernel.t_aio.echo import EchoCompletion, EchoSubmission
 from pycoro.kernel.t_aio.function import FunctionCompletion, FunctionSubmission
 
 
-def function_coroutine(n: int) -> pycoro.CoroutineFunc[Submission, Completion, str]:
+def function_coroutine(n: int) -> pycoro.CoroutineFunc[FunctionSubmission, FunctionCompletion, str]:
     def _(
-        c: pycoro.Coroutine[Submission, Completion, str],
+        c: pycoro.Coroutine[FunctionSubmission, FunctionCompletion, str],
     ) -> str:
         if n == 0:
             return ""
 
-        # Yield two I/O operations
-        id1 = uuid4().hex
-        id2 = uuid4().hex
-
-        foo_future = pycoro.emit(c, Submission({"id": id1}, FunctionSubmission(lambda: f"foo.{n}")))
-        bar_future = pycoro.emit(c, Submission({"id": id2}, FunctionSubmission(lambda: f"bar.{n}")))
+        foo_future = pycoro.emit(c, FunctionSubmission(lambda: f"foo.{n}"))
+        bar_future = pycoro.emit(c, FunctionSubmission(lambda: f"bar.{n}"))
         baz = pycoro.spawn_and_wait(c, function_coroutine(n - 1))
 
         # Await results
         foo_completion = pycoro.wait(c, foo_future)
-        assert isinstance(foo_completion.value, FunctionCompletion)
-        assert foo_completion.tags == {"id": id1}
-        foo = foo_completion.value.result
+        foo = foo_completion.result
         assert isinstance(foo, str)
 
         bar_completion = pycoro.wait(c, bar_future)
-        assert isinstance(bar_completion.value, FunctionCompletion)
-        assert bar_completion.tags == {"id": id2}
-        bar = bar_completion.value.result
+        bar = bar_completion.result
         assert isinstance(bar, str)
 
         return f"{foo}:{bar}:{baz}"
@@ -43,31 +32,24 @@ def function_coroutine(n: int) -> pycoro.CoroutineFunc[Submission, Completion, s
     return _
 
 
-def echo_coroutine(n: int) -> pycoro.CoroutineFunc[Submission, Completion, str]:
+def echo_coroutine(n: int) -> pycoro.CoroutineFunc[EchoSubmission, EchoCompletion, str]:
     def _(
-        c: pycoro.Coroutine[Submission, Completion, str],
+        c: pycoro.Coroutine[EchoSubmission, EchoCompletion, str],
     ) -> str:
         if n == 0:
             return ""
 
         # Yield two I/O operations
-        id1 = uuid4().hex
-        id2 = uuid4().hex
-
-        foo_future = pycoro.emit(c, Submission({"id": id1}, EchoSubmission(f"foo.{n}")))
-        bar_future = pycoro.emit(c, Submission({"id": id2}, EchoSubmission(f"bar.{n}")))
+        foo_future = pycoro.emit(c, EchoSubmission(f"foo.{n}"))
+        bar_future = pycoro.emit(c, EchoSubmission(f"bar.{n}"))
         baz = pycoro.spawn_and_wait(c, echo_coroutine(n - 1))
 
         # Await results
         foo_completion = pycoro.wait(c, foo_future)
-        assert isinstance(foo_completion.value, EchoCompletion)
-        assert foo_completion.tags == {"id": id1}
-        foo = foo_completion.value.data
+        foo = foo_completion.data
 
         bar_completion = pycoro.wait(c, bar_future)
-        assert isinstance(bar_completion.value, EchoCompletion)
-        assert bar_completion.tags == {"id": id2}
-        bar = bar_completion.value.data
+        bar = bar_completion.data
 
         return f"{foo}:{bar}:{baz}"
 

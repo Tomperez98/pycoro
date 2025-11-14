@@ -25,12 +25,12 @@ class AIO(Protocol):
     def flush(self, time: int) -> None: ...
     def dispatch(
         self,
-        v: t_aio.Submission | None,
-        cb: Callable[[t_aio.Completion | Exception], None],
+        v: t_aio.Kind | None,
+        cb: Callable[[t_aio.Kind | Exception], None],
     ) -> None: ...
-    def enqueue_sqe(self, sqe: SQE[t_aio.Submission, t_aio.Completion]) -> None: ...
-    def enqueue_cqe(self, cqe: CQE[t_aio.Submission, t_aio.Completion]) -> None: ...
-    def dequeue_cqe(self, n: int) -> list[CQE[t_aio.Submission, t_aio.Completion]]: ...
+    def enqueue_sqe(self, sqe: SQE[t_aio.Kind, t_aio.Kind]) -> None: ...
+    def enqueue_cqe(self, cqe: CQE[t_aio.Kind, t_aio.Kind]) -> None: ...
+    def dequeue_cqe(self, n: int) -> list[CQE[t_aio.Kind, t_aio.Kind]]: ...
 
 
 def new(size: int) -> _AIO:
@@ -39,8 +39,8 @@ def new(size: int) -> _AIO:
 
 class _AIO:
     def __init__(self, size: int) -> None:
-        self.cq: Final = Queue[CQE[t_aio.Submission, t_aio.Completion]](size)
-        self.buffer: CQE[t_aio.Submission, t_aio.Completion] | None = None
+        self.cq: Final = Queue[CQE[t_aio.Kind, t_aio.Kind]](size)
+        self.buffer: CQE[t_aio.Kind, t_aio.Kind] | None = None
         self.subsystems: dict[str, Subsystem] = {}
         self.errors: Final = Queue[Error]()
 
@@ -63,25 +63,24 @@ class _AIO:
 
     def dispatch(
         self,
-        v: t_aio.Submission | None,
-        cb: Callable[[t_aio.Completion | Exception], None],
+        v: t_aio.Kind | None,
+        cb: Callable[[t_aio.Kind | Exception], None],
     ) -> None:
         assert v is not None
-        assert v.tags.get("id") is not None, "id tag must be set"
-        self.enqueue_sqe(SQE(v.tags["id"], cb, v))
+        self.enqueue_sqe(SQE(cb, v))
 
-    def enqueue_sqe(self, sqe: SQE[t_aio.Submission, t_aio.Completion]) -> None:
-        subsystem = self.subsystems.get(sqe.submission.value.kind())
+    def enqueue_sqe(self, sqe: SQE[t_aio.Kind, t_aio.Kind]) -> None:
+        subsystem = self.subsystems.get(sqe.submission.kind())
         assert subsystem is not None, "invalid aio submission"
 
         if not subsystem.enqueue(sqe):
             sqe.callback(Error(StatusCode.STATUS_AIO_SUBMISSION_QUEUE_FULL))
 
-    def enqueue_cqe(self, cqe: CQE[t_aio.Submission, t_aio.Completion]) -> None:
+    def enqueue_cqe(self, cqe: CQE[t_aio.Kind, t_aio.Kind]) -> None:
         self.cq.put(cqe)
 
-    def dequeue_cqe(self, n: int) -> list[CQE[t_aio.Submission, t_aio.Completion]]:
-        cqes: list[CQE[t_aio.Submission, t_aio.Completion]] = []
+    def dequeue_cqe(self, n: int) -> list[CQE[t_aio.Kind, t_aio.Kind]]:
+        cqes: list[CQE[t_aio.Kind, t_aio.Kind]] = []
 
         if self.buffer is not None:
             cqes.append(self.buffer)
