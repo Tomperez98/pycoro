@@ -75,7 +75,6 @@ class _Echo:
         return None
 
     def _process(self, sqe: SQE[t_aio.Kind, t_aio.Kind]) -> CQE[t_aio.Kind, t_aio.Kind]:
-        assert self.kind() == sqe.submission.kind()
         assert isinstance(sqe.submission, EchoSubmission)
 
         return CQE(
