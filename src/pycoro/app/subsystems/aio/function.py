@@ -5,12 +5,29 @@ from queue import Full, Queue, ShutDown
 from threading import Thread
 from typing import TYPE_CHECKING, Any, Final, Literal
 
+from pycoro.kernel import t_aio
 from pycoro.kernel.bus import CQE, SQE
-from pycoro.kernel.t_aio.function import FunctionCompletion, FunctionSubmission
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from pycoro.aio import AIO
     from pycoro.kernel.t_api.error import Error
+
+
+class _Kind:
+    def kind(self) -> Literal["function"]:
+        return "function"
+
+
+@dataclass(frozen=True)
+class FunctionSubmission(_Kind):
+    fn: Callable[[], Any]
+
+
+@dataclass(frozen=True)
+class FunctionCompletion(_Kind):
+    result: Any | Exception
 
 
 @dataclass(frozen=True)
@@ -27,7 +44,7 @@ class _Function:
     def __init__(self, aio: AIO, config: Config) -> None:
         self.config: Final = config
         self.aio: Final = aio
-        self.sq: Final = Queue[SQE[FunctionSubmission, FunctionCompletion]](config.size)
+        self.sq: Final = Queue[SQE[t_aio.Kind, t_aio.Kind]](config.size)
         self.workers: list[Thread] = [
             Thread(target=self._worker, daemon=True) for _ in range(config.workers)
         ]
@@ -47,7 +64,7 @@ class _Function:
         self.workers.clear()
         self.sq.join()
 
-    def enqueue(self, sqe: SQE[FunctionSubmission, FunctionCompletion]) -> bool:
+    def enqueue(self, sqe: SQE[t_aio.Kind, t_aio.Kind]) -> bool:
         try:
             self.sq.put_nowait(sqe)
         except Full:
@@ -58,10 +75,9 @@ class _Function:
     def flush(self, time: int) -> None:  # pyright: ignore[reportUnusedParameter]
         return None
 
-    def _process(
-        self, sqe: SQE[FunctionSubmission, FunctionCompletion]
-    ) -> CQE[FunctionSubmission, FunctionCompletion]:
+    def _process(self, sqe: SQE[t_aio.Kind, t_aio.Kind]) -> CQE[t_aio.Kind, t_aio.Kind]:
         assert self.kind() == sqe.submission.kind()
+        assert isinstance(sqe.submission, FunctionSubmission)
 
         result: Any | Exception
         try:
@@ -73,9 +89,7 @@ class _Function:
             FunctionCompletion(result),
         )
 
-    def process(
-        self, sqes: list[SQE[FunctionSubmission, FunctionCompletion]]
-    ) -> list[CQE[FunctionSubmission, FunctionCompletion]]:
+    def process(self, sqes: list[SQE[t_aio.Kind, t_aio.Kind]]) -> list[CQE[t_aio.Kind, t_aio.Kind]]:
         assert len(self.workers) > 0, "must be at least one worker"
         return [self._process(sqe) for sqe in sqes]
 

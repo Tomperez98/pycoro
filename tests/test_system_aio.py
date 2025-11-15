@@ -1,29 +1,36 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pycoro
 from pycoro import aio
 from pycoro.app.subsystems.aio import echo, function
-from pycoro.kernel.t_aio.echo import EchoCompletion, EchoSubmission
-from pycoro.kernel.t_aio.function import FunctionCompletion, FunctionSubmission
+
+if TYPE_CHECKING:
+    from pycoro.kernel import t_aio
 
 
-def function_coroutine(n: int) -> pycoro.CoroutineFunc[FunctionSubmission, FunctionCompletion, str]:
+def function_coroutine(
+    n: int,
+) -> pycoro.CoroutineFunc[t_aio.Kind, t_aio.Kind, str]:
     def _(
-        c: pycoro.Coroutine[FunctionSubmission, FunctionCompletion, str],
+        c: pycoro.Coroutine[t_aio.Kind, t_aio.Kind, str],
     ) -> str:
         if n == 0:
             return ""
 
-        foo_future = pycoro.emit(c, FunctionSubmission(lambda: f"foo.{n}"))
-        bar_future = pycoro.emit(c, FunctionSubmission(lambda: f"bar.{n}"))
+        foo_future = pycoro.emit(c, function.FunctionSubmission(lambda: f"foo.{n}"))
+        bar_future = pycoro.emit(c, function.FunctionSubmission(lambda: f"bar.{n}"))
         baz = pycoro.spawn_and_wait(c, function_coroutine(n - 1))
 
         # Await results
         foo_completion = pycoro.wait(c, foo_future)
+        assert isinstance(foo_completion, function.FunctionCompletion)
         foo = foo_completion.result
         assert isinstance(foo, str)
 
         bar_completion = pycoro.wait(c, bar_future)
+        assert isinstance(bar_completion, function.FunctionCompletion)
         bar = bar_completion.result
         assert isinstance(bar, str)
 
@@ -32,23 +39,25 @@ def function_coroutine(n: int) -> pycoro.CoroutineFunc[FunctionSubmission, Funct
     return _
 
 
-def echo_coroutine(n: int) -> pycoro.CoroutineFunc[EchoSubmission, EchoCompletion, str]:
+def echo_coroutine(n: int) -> pycoro.CoroutineFunc[t_aio.Kind, t_aio.Kind, str]:
     def _(
-        c: pycoro.Coroutine[EchoSubmission, EchoCompletion, str],
+        c: pycoro.Coroutine[t_aio.Kind, t_aio.Kind, str],
     ) -> str:
         if n == 0:
             return ""
 
         # Yield two I/O operations
-        foo_future = pycoro.emit(c, EchoSubmission(f"foo.{n}"))
-        bar_future = pycoro.emit(c, EchoSubmission(f"bar.{n}"))
+        foo_future = pycoro.emit(c, echo.EchoSubmission(f"foo.{n}"))
+        bar_future = pycoro.emit(c, echo.EchoSubmission(f"bar.{n}"))
         baz = pycoro.spawn_and_wait(c, echo_coroutine(n - 1))
 
         # Await results
         foo_completion = pycoro.wait(c, foo_future)
+        assert isinstance(foo_completion, echo.EchoCompletion)
         foo = foo_completion.data
 
         bar_completion = pycoro.wait(c, bar_future)
+        assert isinstance(bar_completion, echo.EchoCompletion)
         bar = bar_completion.data
 
         return f"{foo}:{bar}:{baz}"

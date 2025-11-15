@@ -5,12 +5,27 @@ from queue import Full, Queue, ShutDown
 from threading import Thread
 from typing import TYPE_CHECKING, Final, Literal
 
+from pycoro.kernel import t_aio
 from pycoro.kernel.bus import CQE, SQE
-from pycoro.kernel.t_aio.echo import EchoCompletion, EchoSubmission
 
 if TYPE_CHECKING:
     from pycoro.aio import AIO
     from pycoro.kernel.t_api.error import Error
+
+
+class _Kind:
+    def kind(self) -> Literal["echo"]:
+        return "echo"
+
+
+@dataclass(frozen=True)
+class EchoSubmission(_Kind):
+    data: str
+
+
+@dataclass(frozen=True)
+class EchoCompletion(_Kind):
+    data: str
 
 
 @dataclass(frozen=True)
@@ -28,7 +43,7 @@ class _Echo:
     def __init__(self, aio: AIO, config: Config) -> None:
         self.config: Final = config
         self.aio: Final = aio
-        self.sq: Final = Queue[SQE[EchoSubmission, EchoCompletion]](config.size)
+        self.sq: Final = Queue[SQE[t_aio.Kind, t_aio.Kind]](config.size)
         self.workers: list[Thread] = [
             Thread(target=self._worker, daemon=True) for _ in range(config.workers)
         ]
@@ -48,7 +63,7 @@ class _Echo:
         self.workers.clear()
         self.sq.join()
 
-    def enqueue(self, sqe: SQE[EchoSubmission, EchoCompletion]) -> bool:
+    def enqueue(self, sqe: SQE[t_aio.Kind, t_aio.Kind]) -> bool:
         try:
             self.sq.put_nowait(sqe)
         except Full:
@@ -59,19 +74,16 @@ class _Echo:
     def flush(self, time: int) -> None:  # pyright: ignore[reportUnusedParameter]
         return None
 
-    def _process(
-        self, sqe: SQE[EchoSubmission, EchoCompletion]
-    ) -> CQE[EchoSubmission, EchoCompletion]:
+    def _process(self, sqe: SQE[t_aio.Kind, t_aio.Kind]) -> CQE[t_aio.Kind, t_aio.Kind]:
         assert self.kind() == sqe.submission.kind()
+        assert isinstance(sqe.submission, EchoSubmission)
 
         return CQE(
             sqe.callback,
             EchoCompletion(sqe.submission.data),
         )
 
-    def process(
-        self, sqes: list[SQE[EchoSubmission, EchoCompletion]]
-    ) -> list[CQE[EchoSubmission, EchoCompletion]]:
+    def process(self, sqes: list[SQE[t_aio.Kind, t_aio.Kind]]) -> list[CQE[t_aio.Kind, t_aio.Kind]]:
         assert len(self.workers) > 0, "must be at least one worker"
         return [self._process(sqe) for sqe in sqes]
 
