@@ -1,45 +1,64 @@
 from __future__ import annotations
 
-import random
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import pycoro
-from pycoro.io.fio import FIO
+from pycoro import aio
+from pycoro.app.subsystems.aio import echo, function
+
+if TYPE_CHECKING:
+    from pycoro.kernel import t_aio
 
 
-def greet(string: str) -> str:
-    if random.randint(0, 1) == 0:
-        msg = "oops"
-        raise RuntimeError(msg)
-
-    return string
-
-
-def coroutine(n: int) -> pycoro.CoroutineFunc[Callable[[], str], str, str]:
+def function_coroutine(
+    n: int,
+) -> pycoro.CoroutineFunc[t_aio.Kind, t_aio.Kind, str]:
     def _(
-        c: pycoro.Coroutine[Callable[[], str], str, str],
+        c: pycoro.Coroutine[t_aio.Kind, t_aio.Kind, str],
+    ) -> str:
+        if n == 0:
+            return ""
+
+        foo_future = pycoro.emit(c, function.FunctionSubmission(lambda: f"foo.{n}"))
+        bar_future = pycoro.emit(c, function.FunctionSubmission(lambda: f"bar.{n}"))
+        baz = pycoro.spawn_and_wait(c, function_coroutine(n - 1))
+
+        # Await results
+        foo_completion = pycoro.wait(c, foo_future)
+        assert isinstance(foo_completion, function.FunctionCompletion)
+        foo = foo_completion.result
+        assert isinstance(foo, str)
+
+        bar_completion = pycoro.wait(c, bar_future)
+        assert isinstance(bar_completion, function.FunctionCompletion)
+        bar = bar_completion.result
+        assert isinstance(bar, str)
+
+        return f"{foo}:{bar}:{baz}"
+
+    return _
+
+
+def echo_coroutine(n: int) -> pycoro.CoroutineFunc[t_aio.Kind, t_aio.Kind, str]:
+    def _(
+        c: pycoro.Coroutine[t_aio.Kind, t_aio.Kind, str],
     ) -> str:
         if n == 0:
             return ""
 
         # Yield two I/O operations
-        foo_future = pycoro.emit(c, lambda: greet(f"foo.{n}"))
-        bar_future = pycoro.emit(c, lambda: greet(f"bar.{n}"))
-        try:
-            baz = pycoro.spawn_and_wait(c, coroutine(n - 1))
-        except Exception:
-            baz = f"baz.{n}"
+        foo_future = pycoro.emit(c, echo.EchoSubmission(f"foo.{n}"))
+        bar_future = pycoro.emit(c, echo.EchoSubmission(f"bar.{n}"))
+        baz = pycoro.spawn_and_wait(c, echo_coroutine(n - 1))
 
         # Await results
-        try:
-            foo = pycoro.wait(c, foo_future)
-        except Exception:
-            foo = f"foo.{n}"
+        foo_completion = pycoro.wait(c, foo_future)
+        assert isinstance(foo_completion, echo.EchoCompletion)
+        foo = foo_completion.data
 
-        try:
-            bar = pycoro.wait(c, bar_future)
-        except Exception:
-            bar = f"bar.{n}"
+        bar_completion = pycoro.wait(c, bar_future)
+        assert isinstance(bar_completion, echo.EchoCompletion)
+        bar = bar_completion.data
 
         return f"{foo}:{bar}:{baz}"
 
@@ -47,28 +66,32 @@ def coroutine(n: int) -> pycoro.CoroutineFunc[Callable[[], str], str, str]:
 
 
 def test_system() -> None:
-    # Instantiate FIO
-    fio = FIO[Callable[[], str], str](100)
-
-    # Start I/O worker on a thread
-    fio.worker()
+    # Instantiate IO
+    io = aio.new(100)
+    io.add_subsystem(echo.new(io, echo.Config()))
+    io.add_subsystem(function.new(io, function.Config()))
+    io.start()
 
     # Instantiate scheduler
-    scheduler = pycoro.Scheduler[Callable[[], str], str](fio, 100)
+    scheduler = pycoro.Scheduler(io, 100)
 
     # Add coroutine to scheduler
-    promise = pycoro.add(scheduler, coroutine(3))
-    assert promise
+    echo_promise = pycoro.add(scheduler, echo_coroutine(5))
+    function_promise = pycoro.add(scheduler, function_coroutine(5))
+    assert echo_promise is not None
+    assert function_promise is not None
 
     # Run scheduler until all tasks complete
+    i = 0
     while scheduler.size() > 0:
-        for cqe in fio.dequeue(3):
+        for cqe in io.dequeue_cqe(3):
             cqe.invoke()
-        scheduler.run_until_blocked(0)
+        scheduler.run_until_blocked(i)
+        i += 1
 
     # Shutdown scheduler
     scheduler.shutdown()
-    fio.shutdown()
+    io.shutdown()
 
     # Await and check final result
-    assert promise.result() == "foo.3:bar.3:foo.2:bar.2:foo.1:bar.1:"
+    assert echo_promise.result() == function_promise.result()

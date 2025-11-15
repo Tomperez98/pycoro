@@ -4,12 +4,9 @@ import queue
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Final, Protocol
+from typing import Any, Final, Protocol
 
 from pycoro import scheduler
-
-if TYPE_CHECKING:
-    from pycoro.io import io
 
 
 # Coroutine
@@ -115,7 +112,7 @@ class _Scheduler[I, O](Protocol):
 
 
 class Scheduler[I, O]:
-    def __init__(self, io: io.IO[I, O], size: int) -> None:
+    def __init__(self, io: scheduler.IO[I, O], size: int) -> None:
         self._executor: Final = ThreadPoolExecutor(max_workers=size)
         self._s: Final = scheduler.Scheduler[I, O](io, size)
 
