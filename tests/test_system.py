@@ -65,7 +65,7 @@ def echo_coroutine(n: int) -> pycoro.CoroutineFunc[t_aio.Kind, t_aio.Kind, str]:
     return _
 
 
-def test_system_aio() -> None:
+def test_system() -> None:
     # Instantiate IO
     io = aio.new(100)
     io.add_subsystem(echo.new(io, echo.Config()))

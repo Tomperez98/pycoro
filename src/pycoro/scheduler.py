@@ -8,7 +8,9 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from concurrent.futures import Future
 
-    from pycoro.io import io
+
+class IO[I, O](Protocol):
+    def dispatch(self, v: I | None, cb: Callable[[O | Exception], None]) -> None: ...
 
 
 class Coroutine[I, O](Protocol):
@@ -31,7 +33,7 @@ class AwaitingCoroutine[I, O]:
 
 
 class Scheduler[I, O]:
-    def __init__(self, io: io.IO[I, O], size: int) -> None:
+    def __init__(self, io: IO[I, O], size: int) -> None:
         self._io: Final = io
         self._in: Final = queue.Queue[Coroutine[I, O]](size)
         self._runnable: list[Coroutine[I, O]] = []
