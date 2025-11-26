@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from queue import Empty, Full, Queue
 from threading import Event, Thread
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Any, Final, Protocol
 
 from pycoro.kernel import t_api
 from pycoro.kernel.bus import SQE
@@ -22,12 +22,12 @@ class API(Protocol):
     @property
     def errors(self) -> Queue[Error]: ...
     def signal(self, cancel: Event) -> Event: ...
-    def enqueue_sqe(self, sqe: SQE[t_api.Request, t_api.Response]) -> None: ...
-    def dequeue_sqe(self, n: int) -> list[SQE[t_api.Request, t_api.Response]]: ...
-    def enqueue_cqe(self, cqe: CQE[t_api.Request, t_api.Response]) -> None: ...
+    def enqueue_sqe(self, sqe: SQE[t_api.Request[Any], t_api.Response[Any]]) -> None: ...
+    def dequeue_sqe(self, n: int) -> list[SQE[t_api.Request[Any], t_api.Response[Any]]]: ...
+    def enqueue_cqe(self, cqe: CQE[t_api.Request[Any], t_api.Response[Any]]) -> None: ...
     def dequeue_cqe(
-        self, cqes: Queue[CQE[t_api.Request, t_api.Response]]
-    ) -> CQE[t_api.Request, t_api.Response]: ...
+        self, cqes: Queue[CQE[t_api.Request[Any], t_api.Response[Any]]]
+    ) -> CQE[t_api.Request[Any], t_api.Response[Any]]: ...
 
 
 def new(size: int) -> _API:
@@ -36,8 +36,8 @@ def new(size: int) -> _API:
 
 class _API:
     def __init__(self, size: int) -> None:
-        self.sq: Final = Queue[SQE[t_api.Request, t_api.Response]](size)
-        self.buffer: SQE[t_api.Request, t_api.Response] | None = None
+        self.sq: Final = Queue[SQE[t_api.Request[Any], t_api.Response[Any]]](size)
+        self.buffer: SQE[t_api.Request[Any], t_api.Response[Any]] | None = None
         self.subsystems: list[Subsystem] = []
         self.completed: bool = False
         self.errors: Final = Queue[Error]()
@@ -97,9 +97,8 @@ class _API:
         Thread(target=wait_for_signal, daemon=True).start()
         return signal_event
 
-    def enqueue_sqe(self, sqe: SQE[t_api.Request, t_api.Response]) -> None:
+    def enqueue_sqe(self, sqe: SQE[t_api.Request[Any], t_api.Response[Any]]) -> None:
         assert sqe.submission is not None, "submission must not be None"
-        assert sqe.submission.metadata is not None, "submission tags must not be None"
 
         if self.completed:
             sqe.callback(Error(StatusCode.STATUS_SYSTEM_SHUTTING_DOWN))
@@ -117,8 +116,8 @@ class _API:
         except Full:
             sqe.callback(Error(StatusCode.STATUS_API_SUBMISSION_QUEUE_FULL))
 
-    def dequeue_sqe(self, n: int) -> list[SQE[t_api.Request, t_api.Response]]:
-        sqes: list[SQE[t_api.Request, t_api.Response]] = []
+    def dequeue_sqe(self, n: int) -> list[SQE[t_api.Request[Any], t_api.Response[Any]]]:
+        sqes: list[SQE[t_api.Request[Any], t_api.Response[Any]]] = []
 
         if self.buffer is not None:
             sqes.append(self.buffer)
@@ -134,10 +133,10 @@ class _API:
 
         return sqes
 
-    def enqueue_cqe(self, cqe: CQE[t_api.Request, t_api.Response]) -> None:
+    def enqueue_cqe(self, cqe: CQE[t_api.Request[Any], t_api.Response[Any]]) -> None:
         return cqe.invoke()
 
     def dequeue_cqe(
-        self, cqes: Queue[CQE[t_api.Request, t_api.Response]]
-    ) -> CQE[t_api.Request, t_api.Response]:
+        self, cqes: Queue[CQE[t_api.Request[Any], t_api.Response[Any]]]
+    ) -> CQE[t_api.Request[Any], t_api.Response[Any]]:
         return cqes.get()

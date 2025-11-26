@@ -10,10 +10,9 @@ class ResponsePayload(Protocol):
 
 
 @dataclass(frozen=True)
-class Response:
+class Response[T: ResponsePayload]:
     status: int
-    metadata: dict[str, str]
-    payload: ResponsePayload
+    payload: T
 
     def kind(self) -> str:
         return self.payload.kind()

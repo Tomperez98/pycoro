@@ -1,97 +1,111 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import queue
+from dataclasses import dataclass
+from functools import partial
+from typing import TYPE_CHECKING, Any, Literal
 
 import pycoro
-from pycoro import aio
-from pycoro.app.subsystems.aio import echo, function
+from pycoro.aio import new as new_aio
+from pycoro.api import new as new_api
+from pycoro.app.subsystems.aio import echo
+from pycoro.kernel import system
+from pycoro.kernel.bus import SQE
+from pycoro.kernel.t_api.error import Error
+from pycoro.kernel.t_api.request import Request
+from pycoro.kernel.t_api.response import Response
+from pycoro.kernel.t_api.status import StatusCode
 
 if TYPE_CHECKING:
-    from pycoro.kernel import t_aio
+    from pycoro.kernel.t_aio import Kind
 
 
-def function_coroutine(
-    n: int,
-) -> pycoro.CoroutineFunc[t_aio.Kind, t_aio.Kind, str]:
-    def _(
-        c: pycoro.Coroutine[t_aio.Kind, t_aio.Kind, str],
-    ) -> str:
-        if n == 0:
-            return ""
+@dataclass(frozen=True)
+class EchoRequest:
+    data: str
 
-        foo_future = pycoro.emit(c, function.FunctionSubmission(lambda: f"foo.{n}"))
-        bar_future = pycoro.emit(c, function.FunctionSubmission(lambda: f"bar.{n}"))
-        baz = pycoro.spawn_and_wait(c, function_coroutine(n - 1))
+    def kind(self) -> str:
+        return "echo"
 
-        # Await results
-        foo_completion = pycoro.wait(c, foo_future)
-        assert isinstance(foo_completion, function.FunctionCompletion)
-        foo = foo_completion.result
-        assert isinstance(foo, str)
+    def validate(self) -> None:
+        return
 
-        bar_completion = pycoro.wait(c, bar_future)
-        assert isinstance(bar_completion, function.FunctionCompletion)
-        bar = bar_completion.result
-        assert isinstance(bar, str)
-
-        return f"{foo}:{bar}:{baz}"
-
-    return _
+    def is_request_payload(self) -> Literal[True]:
+        return True
 
 
-def echo_coroutine(n: int) -> pycoro.CoroutineFunc[t_aio.Kind, t_aio.Kind, str]:
-    def _(
-        c: pycoro.Coroutine[t_aio.Kind, t_aio.Kind, str],
-    ) -> str:
-        if n == 0:
-            return ""
+@dataclass(frozen=True)
+class EchoResponse:
+    data: str
 
-        # Yield two I/O operations
-        foo_future = pycoro.emit(c, echo.EchoSubmission(f"foo.{n}"))
-        bar_future = pycoro.emit(c, echo.EchoSubmission(f"bar.{n}"))
-        baz = pycoro.spawn_and_wait(c, echo_coroutine(n - 1))
+    def kind(self) -> str:
+        return "echo"
 
-        # Await results
-        foo_completion = pycoro.wait(c, foo_future)
-        assert isinstance(foo_completion, echo.EchoCompletion)
-        foo = foo_completion.data
-
-        bar_completion = pycoro.wait(c, bar_future)
-        assert isinstance(bar_completion, echo.EchoCompletion)
-        bar = bar_completion.data
-
-        return f"{foo}:{bar}:{baz}"
-
-    return _
+    def is_response_payload(self) -> Literal[True]:
+        return True
 
 
-def test_system() -> None:
-    # Instantiate IO
-    io = aio.new(100)
-    io.add_subsystem(echo.new(io, echo.Config()))
-    io.add_subsystem(function.new(io, function.Config()))
-    io.start()
+def echo_coroutine(
+    c: pycoro.Coroutine[Kind, Kind, Any], r: Request[EchoRequest]
+) -> Response[EchoResponse]:
+    req = r.payload
 
-    # Instantiate scheduler
-    scheduler = pycoro.Scheduler(io, 100)
+    completion = pycoro.emit_and_wait(c, echo.EchoSubmission(req.data))
+    assert isinstance(completion, echo.EchoCompletion)
 
-    # Add coroutine to scheduler
-    echo_promise = pycoro.add(scheduler, echo_coroutine(5))
-    function_promise = pycoro.add(scheduler, function_coroutine(5))
-    assert echo_promise is not None
-    assert function_promise is not None
+    return Response(status=StatusCode.STATUS_OK, payload=EchoResponse(completion.data))
 
-    # Run scheduler until all tasks complete
-    i = 0
-    while scheduler.size() > 0:
-        for cqe in io.dequeue_cqe(3):
-            cqe.invoke()
-        scheduler.run_until_blocked(i)
-        i += 1
 
-    # Shutdown scheduler
-    scheduler.shutdown()
-    io.shutdown()
+def test_system_loop() -> None:
+    aio = new_aio(100)
+    api = new_api(100)
+    aio.add_subsystem(echo.new(aio, echo.Config(size=100, batch_size=1, workers=1)))
+    api.start()
+    aio.start()
 
-    # Await and check final result
-    assert echo_promise.result() == function_promise.result()
+    s = system.new(
+        api,
+        aio,
+        system.Config(coroutine_max_size=100, submission_batch_size=1, completion_batch_size=1),
+    )
+    s.add_on_request("echo", echo_coroutine)
+
+    received = queue.Queue[int](10)
+
+    for i in range(5):
+        data = str(i)
+
+        def cb1(data: str, res: Response[EchoResponse] | Exception) -> None:
+            received.put(1)
+            assert not isinstance(res, Exception)
+            assert data == res.payload.data
+
+        api.enqueue_sqe(
+            SQE[Request[EchoRequest], Response[EchoResponse]](
+                submission=Request(payload=EchoRequest(data=data)),
+                callback=partial(cb1, data),
+            )
+        )
+
+    _ = s.shutdown()
+
+    for _ in range(5):
+
+        def cb2(res: Response[EchoResponse] | Exception) -> None:
+            received.put(1)
+            assert isinstance(res, Error)
+            assert res.code == StatusCode.STATUS_SYSTEM_SHUTTING_DOWN
+
+        api.enqueue_sqe(
+            SQE[Request[EchoRequest], Response[EchoResponse]](
+                submission=Request(payload=EchoRequest(data="nope")),
+                callback=cb2,
+            )
+        )
+
+    s.loop()
+
+    for _ in range(10):
+        _ = received.get()
+
+    assert received.qsize() == 0

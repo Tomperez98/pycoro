@@ -11,9 +11,8 @@ class RequestPayload(Protocol):
 
 
 @dataclass(frozen=True)
-class Request:
-    metadata: dict[str, str]
-    payload: RequestPayload
+class Request[T: RequestPayload]:
+    payload: T
 
     def kind(self) -> str:
         return self.payload.kind()

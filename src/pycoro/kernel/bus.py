@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pycoro.kernel import t_aio, t_api
 
@@ -9,8 +9,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 
-type Input = t_aio.Kind | t_api.Request
-type Output = t_aio.Kind | t_api.Response
+type Input = t_aio.Kind | t_api.Request[Any]
+type Output = t_aio.Kind | t_api.Response[Any]
 
 
 @dataclass(frozen=True)
