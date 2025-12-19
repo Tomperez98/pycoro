@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class Context:
+class Info:
     id: str
     fn_name: str
     args: tuple[Any, ...]
@@ -19,7 +19,7 @@ class Context:
 
 @dataclass(frozen=True)
 class CQE[T]:
-    ctx: Context
+    info: Info
     result: Any | Exception
 
 
@@ -35,7 +35,7 @@ class Processor:
         self._pool.submit(fn, *args, **kwargs).add_done_callback(
             lambda f: self._cq.put(
                 CQE(
-                    Context(
+                    Info(
                         id=id,
                         fn_name=getattr(fn, "__name__", "unknown"),
                         args=args,

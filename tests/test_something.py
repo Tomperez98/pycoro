@@ -27,7 +27,7 @@ def test_processor() -> None:
     results: list[CQE[Any]] = []
     for _ in range(num_tasks):
         res = p.wait_for_value()
-        assert sum(res.ctx.args) == res.result == expected_results.pop(res.ctx.id)
+        assert sum(res.info.args) == res.result == expected_results.pop(res.info.id)
         results.append(res)
 
     assert len(results) == num_tasks
