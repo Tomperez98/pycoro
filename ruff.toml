@@ -2,6 +2,7 @@ line-length = 100
 
 [lint]
 ignore = [
+    "A001",
     "A002",
     "ANN401",
     "ARG002",

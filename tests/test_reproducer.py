@@ -20,8 +20,8 @@ def test_gen_reproducer() -> None:
 
     # 1. Define the generator factory
     def workflow() -> Generator[Yieldable, Sendable[Any], str]:
-        val1 = yield Run(id="step1", fn=task, args=("a",), kwargs={})
-        val2 = yield Run(id="step2", fn=task, args=("b",), kwargs={})
+        val1 = yield Run(fn=task, args=("a",), kwargs={}).options(id="step1")
+        val2 = yield Run(fn=task, args=("b",), kwargs={}).options(id="step2")
         return f"{val1}_{val2}"
 
     # --- SCENARIO 1: Empty Cache ---
@@ -44,10 +44,10 @@ def test_gen_reproducer() -> None:
 
     def error_workflow() -> Generator[Yieldable, Sendable[Any], str]:
         try:
-            yield Run(id="step1", fn=task, args=(), kwargs={})
+            yield Run(fn=task, args=(), kwargs={}).options(id="step1")
         except ValueError as e:
             # If the iterator correctly uses gen.throw(), we land here
-            yield Run(id="recovery", fn=task, args=(str(e),), kwargs={})
+            yield Run(fn=task, args=(str(e),), kwargs={}).options(id="recovery")
 
         return "done"
 
