@@ -29,7 +29,6 @@ class Processor:
         self._max_workers: int | None = max_workers
         self._pool: ThreadPoolExecutor | None = None
         self._cq: Queue[CQE[Any]] = Queue()
-        self._in_flight: int = 0
 
     def submit[**P](self, fn: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> str:
         taskid = uuid4().hex
@@ -47,14 +46,10 @@ class Processor:
                 )
             )
         )
-        self._in_flight += 1
         return taskid
 
     def wait_for_value(self) -> CQE[Any]:
-        assert self._in_flight > 0, "No tasks in flight to wait for."
-        v = self._cq.get()
-        self._in_flight -= 1
-        return v
+        return self._cq.get()
 
     def start(self) -> None:
         assert self._pool is None, "processor has already been started"
