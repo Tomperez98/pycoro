@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from queue import Queue
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -30,13 +31,14 @@ class Processor:
         self._cq: Queue[CQE[Any]] = Queue()
         self._in_flight: int = 0
 
-    def submit[**P](self, id: str, fn: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> None:
+    def submit[**P](self, fn: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> str:
+        taskid = uuid4().hex
         assert self._pool is not None, "processor was never started"
         self._pool.submit(fn, *args, **kwargs).add_done_callback(
             lambda f: self._cq.put(
                 CQE(
                     Info(
-                        id=id,
+                        id=taskid,
                         fn_name=getattr(fn, "__name__", "unknown"),
                         args=args,
                         kwargs=kwargs,
@@ -46,6 +48,7 @@ class Processor:
             )
         )
         self._in_flight += 1
+        return taskid
 
     def wait_for_value(self) -> CQE[Any]:
         assert self._in_flight > 0, "No tasks in flight to wait for."
