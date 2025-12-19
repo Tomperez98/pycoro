@@ -61,7 +61,6 @@ class Processor:
                     )
                 )
             )
-        self._sq.clear()
         return count
 
     def wait_for_batch(self, count: int, timeout: float | None = None) -> list[CQE[Any]]:
