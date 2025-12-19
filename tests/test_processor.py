@@ -24,11 +24,10 @@ def test_processor() -> None:
         expected_results[taskid] = val1 + val2
 
     submitted_count = p.flush()
-    assert submitted_count == num_tasks
 
     processed_count = 0
 
-    while processed_count < num_tasks:
+    while processed_count < submitted_count:
         batch = p.wait_for_batch(count=5)
 
         assert batch, "Timed out waiting for batch results"
@@ -42,7 +41,7 @@ def test_processor() -> None:
 
             processed_count += 1
 
-    assert processed_count == num_tasks
+    assert processed_count == submitted_count == num_tasks
     assert len(expected_results) == 0
 
     p.stop()
