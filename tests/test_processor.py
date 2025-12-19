@@ -23,9 +23,9 @@ def test_processor() -> None:
         assert taskid not in expected_results
         expected_results[taskid] = val1 + val2
 
-    submitted_count = p.flush()
-    batch = p.wait_for_batch(count=submitted_count)
-    assert batch, "Timed out waiting for batch results"
+    p.flush()
+    batch = p.results()
+    assert len(batch) == num_tasks
     for res in batch:
         assert isinstance(res.result, int)
         expected_val = expected_results.pop(res.info.id)
@@ -33,7 +33,6 @@ def test_processor() -> None:
         assert res.result == expected_val
         assert sum(res.info.args) == expected_val
 
-    assert submitted_count == num_tasks
     assert len(expected_results) == 0
 
     p.stop()

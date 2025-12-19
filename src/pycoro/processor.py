@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from queue import Empty, SimpleQueue
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -36,35 +35,21 @@ class Processor:
     def __init__(self, max_workers: int | None = None) -> None:
         self._max_workers: int | None = max_workers
         self._pool: ThreadPoolExecutor | None = None
-        self._cq: SimpleQueue[CQE[Any]] = SimpleQueue()
+        self._cq: list[CQE[Any]] | None = None
         self._sq: list[SQE[Any]] = []
 
     def submit[**P](self, id: str, fn: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> None:
         self._sq.append(SQE(id=id, fn=fn, args=args, kwargs=kwargs))
 
-    def flush(self) -> int:
+    def flush(self) -> None:
         assert self._pool is not None, "processor was never started"
-        count = len(self._sq)
-        for cqe in self._pool.map(_run_sqe, self._sq):
-            self._cq.put(cqe)
-
+        self._cq = list(self._pool.map(_run_sqe, self._sq))
         self._sq.clear()
-        return count
 
-    def wait_for_batch(self, count: int, timeout: float | None = None) -> list[CQE[Any]]:
-        results: list[CQE[Any]] = []
-        try:
-            first = self._cq.get(timeout=timeout)
-            results.append(first)
-
-            for _ in range(count - 1):
-                try:
-                    results.append(self._cq.get_nowait())
-                except Empty:
-                    break
-        except Empty:
-            pass
-
+    def results(self) -> list[CQE[Any]]:
+        assert self._cq is not None
+        results = self._cq
+        self._cq = []
         return results
 
     def start(self) -> None:
