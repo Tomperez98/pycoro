@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import deque
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -38,7 +37,7 @@ class Processor:
         self._max_workers: int | None = max_workers
         self._pool: ThreadPoolExecutor | None = None
         self._cq: SimpleQueue[CQE[Any]] = SimpleQueue()
-        self._sq: deque[SQE[Any]] = deque()
+        self._sq: list[SQE[Any]] = []
 
     def submit[**P](self, id: str, fn: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> None:
         self._sq.append(SQE(id=id, fn=fn, args=args, kwargs=kwargs))
@@ -46,21 +45,10 @@ class Processor:
     def flush(self) -> int:
         assert self._pool is not None, "processor was never started"
         count = len(self._sq)
-        while self._sq:
-            sqe = self._sq.popleft()
-            self._pool.submit(sqe.fn, *sqe.args, **sqe.kwargs).add_done_callback(
-                lambda f, sqe=sqe: self._cq.put(
-                    CQE(
-                        Info(
-                            id=sqe.id,
-                            fn_name=getattr(sqe.fn, "__name__", "unknown"),
-                            args=sqe.args,
-                            kwargs=sqe.kwargs,
-                        ),
-                        result=f.exception() or f.result(),
-                    )
-                )
-            )
+        for cqe in self._pool.map(_run_sqe, self._sq):
+            self._cq.put(cqe)
+
+        self._sq.clear()
         return count
 
     def wait_for_batch(self, count: int, timeout: float | None = None) -> list[CQE[Any]]:
@@ -90,3 +78,21 @@ class Processor:
         assert self._pool is not None, "processor was never started"
         self._pool.shutdown()
         self._pool = None
+
+
+def _run_sqe[T](sqe: SQE[T]) -> CQE[T]:
+    result: T | Exception
+    try:
+        result = sqe.fn(*sqe.args, **sqe.kwargs)
+    except Exception as e:
+        result = e
+
+    return CQE(
+        Info(
+            id=sqe.id,
+            fn_name=getattr(sqe.fn, "__name__", "unknown"),
+            args=sqe.args,
+            kwargs=sqe.kwargs,
+        ),
+        result=result,
+    )

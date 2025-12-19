@@ -24,24 +24,16 @@ def test_processor() -> None:
         expected_results[taskid] = val1 + val2
 
     submitted_count = p.flush()
+    batch = p.wait_for_batch(count=submitted_count)
+    assert batch, "Timed out waiting for batch results"
+    for res in batch:
+        assert isinstance(res.result, int)
+        expected_val = expected_results.pop(res.info.id)
 
-    processed_count = 0
+        assert res.result == expected_val
+        assert sum(res.info.args) == expected_val
 
-    while processed_count < submitted_count:
-        batch = p.wait_for_batch(count=5)
-
-        assert batch, "Timed out waiting for batch results"
-
-        for res in batch:
-            assert isinstance(res.result, int)
-            expected_val = expected_results.pop(res.info.id)
-
-            assert res.result == expected_val
-            assert sum(res.info.args) == expected_val
-
-            processed_count += 1
-
-    assert processed_count == submitted_count == num_tasks
+    assert submitted_count == num_tasks
     assert len(expected_results) == 0
 
     p.stop()
