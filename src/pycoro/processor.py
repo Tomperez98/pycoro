@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from collections import deque
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from queue import Queue
+from queue import Empty, SimpleQueue
 from typing import TYPE_CHECKING, Any
-from uuid import uuid4
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -24,32 +25,60 @@ class CQE[T]:
     result: Any | Exception
 
 
+@dataclass(frozen=True)
+class SQE[T]:
+    id: str
+    fn: Callable[..., T]
+    args: tuple[Any, ...]
+    kwargs: dict[str, Any]
+
+
 class Processor:
     def __init__(self, max_workers: int | None = None) -> None:
         self._max_workers: int | None = max_workers
         self._pool: ThreadPoolExecutor | None = None
-        self._cq: Queue[CQE[Any]] = Queue()
+        self._cq: SimpleQueue[CQE[Any]] = SimpleQueue()
+        self._sq: deque[SQE[Any]] = deque()
 
-    def submit[**P](self, fn: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> str:
-        taskid = uuid4().hex
+    def submit[**P](self, id: str, fn: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> None:
+        self._sq.append(SQE(id=id, fn=fn, args=args, kwargs=kwargs))
+
+    def flush(self) -> int:
         assert self._pool is not None, "processor was never started"
-        self._pool.submit(fn, *args, **kwargs).add_done_callback(
-            lambda f: self._cq.put(
-                CQE(
-                    Info(
-                        id=taskid,
-                        fn_name=getattr(fn, "__name__", "unknown"),
-                        args=args,
-                        kwargs=kwargs,
-                    ),
-                    result=f.exception() or f.result(),
+        count = len(self._sq)
+        while self._sq:
+            sqe = self._sq.popleft()
+            self._pool.submit(sqe.fn, *sqe.args, **sqe.kwargs).add_done_callback(
+                lambda f, sqe=sqe: self._cq.put(
+                    CQE(
+                        Info(
+                            id=sqe.id,
+                            fn_name=getattr(sqe.fn, "__name__", "unknown"),
+                            args=sqe.args,
+                            kwargs=sqe.kwargs,
+                        ),
+                        result=f.exception() or f.result(),
+                    )
                 )
             )
-        )
-        return taskid
+        self._sq.clear()
+        return count
 
-    def wait_for_value(self) -> CQE[Any]:
-        return self._cq.get()
+    def wait_for_batch(self, count: int, timeout: float | None = None) -> list[CQE[Any]]:
+        results: list[CQE[Any]] = []
+        try:
+            first = self._cq.get(timeout=timeout)
+            results.append(first)
+
+            for _ in range(count - 1):
+                try:
+                    results.append(self._cq.get_nowait())
+                except Empty:
+                    break
+        except Empty:
+            pass
+
+        return results
 
     def start(self) -> None:
         assert self._pool is None, "processor has already been started"
@@ -61,3 +90,4 @@ class Processor:
     def stop(self) -> None:
         assert self._pool is not None, "processor was never started"
         self._pool.shutdown()
+        self._pool = None

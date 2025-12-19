@@ -1,32 +1,48 @@
 from __future__ import annotations
 
 import random
-from typing import Any
 
-from pycoro.processor import CQE, Processor
+from pycoro.processor import Processor
 
 
 def test_processor() -> None:
     p = Processor(max_workers=1)
     p.start()
-    num_tasks = 10
+    num_tasks = 20
     expected_results: dict[str, int] = {}
-    for _ in range(num_tasks):
+    for i in range(num_tasks):
+        taskid = f"task::{i}"
         val1 = random.randint(1, 100)
         val2 = random.randint(1, 100)
-        taskid = p.submit(
+        p.submit(
+            taskid,
             lambda *nums: sum(nums),
             val1,
             val2,
         )
         assert taskid not in expected_results
-        expected_results[taskid] = sum((val1, val2))
+        expected_results[taskid] = val1 + val2
 
-    results: list[CQE[Any]] = []
-    for _ in range(num_tasks):
-        res = p.wait_for_value()
-        assert sum(res.info.args) == res.result == expected_results.pop(res.info.id)
-        results.append(res)
+    submitted_count = p.flush()
+    assert submitted_count == num_tasks
 
-    assert len(results) == num_tasks
+    processed_count = 0
+
+    while processed_count < num_tasks:
+        batch = p.wait_for_batch(count=5)
+
+        assert batch, "Timed out waiting for batch results"
+
+        for res in batch:
+            assert isinstance(res.result, int)
+            expected_val = expected_results.pop(res.info.id)
+
+            assert res.result == expected_val
+            assert sum(res.info.args) == expected_val
+
+            processed_count += 1
+
+    assert processed_count == num_tasks
+    assert len(expected_results) == 0
+
     p.stop()
