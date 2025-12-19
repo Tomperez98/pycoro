@@ -31,3 +31,4 @@ def test_processor() -> None:
         results.append(res)
 
     assert len(results) == num_tasks
+    p.stop()
