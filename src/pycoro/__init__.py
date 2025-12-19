@@ -20,13 +20,14 @@ class CQE[T]:
 
 class Processor:
     def __init__(self, max_workers: int | None = None) -> None:
-        self._pool: ThreadPoolExecutor = ThreadPoolExecutor(
-            thread_name_prefix="processor::", max_workers=max_workers
-        )
+        self._max_workers: int | None = max_workers
+        self._pool: ThreadPoolExecutor | None = None
         self._cq: Queue[CQE[Any]] = Queue()
         self._in_flight: int = 0
 
     def submit[**P](self, id: str, fn: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> None:
+        assert self._pool is not None, "processor was never started"
+
         def _(f: Future[Any]) -> None:
             assert f.done(), "this should be executed at the done callback"
             v: Any | Exception
@@ -53,7 +54,13 @@ class Processor:
         self._in_flight -= 1
         return v
 
-    def start(self) -> None: ...
+    def start(self) -> None:
+        assert self._pool is None, "processor has already been started"
+        self._pool = ThreadPoolExecutor(
+            thread_name_prefix="processor::",
+            max_workers=self._max_workers,
+        )
 
     def stop(self) -> None:
+        assert self._pool is not None, "processor was never started"
         self._pool.shutdown()

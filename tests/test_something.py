@@ -11,9 +11,9 @@ def test_processor() -> None:
     p.start()
     num_tasks = 10
     for i in range(num_tasks):
-        val1: int = random.randint(1, 100)
-        val2: int = random.randint(1, 100)
-        p.submit(f"task::{i}", lambda *nums: sum(nums), val1, val2)
+        p.submit(
+            f"task::{i}", lambda *nums: sum(nums), random.randint(1, 100), random.randint(1, 100)
+        )
 
     results: list[CQE[Any]] = []
     for _ in range(num_tasks):
