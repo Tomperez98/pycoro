@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from queue import Queue
 from typing import TYPE_CHECKING, Any
@@ -10,11 +10,16 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True)
-class CQE[T]:
+class Context:
     id: str
     fn_name: str
     args: tuple[Any, ...]
     kwargs: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class CQE[T]:
+    ctx: Context
     result: Any | Exception
 
 
@@ -27,25 +32,19 @@ class Processor:
 
     def submit[**P](self, id: str, fn: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> None:
         assert self._pool is not None, "processor was never started"
-
-        def _(f: Future[Any]) -> None:
-            assert f.done(), "this should be executed at the done callback"
-            v: Any | Exception
-            try:
-                v = f.result()
-            except Exception as e:
-                v = e
-            self._cq.put(
+        self._pool.submit(fn, *args, **kwargs).add_done_callback(
+            lambda f: self._cq.put(
                 CQE(
-                    id=id,
-                    fn_name=getattr(fn, "__name__", "unknown"),
-                    args=args,
-                    kwargs=kwargs,
-                    result=v,
+                    Context(
+                        id=id,
+                        fn_name=getattr(fn, "__name__", "unknown"),
+                        args=args,
+                        kwargs=kwargs,
+                    ),
+                    result=f.exception() or f.result(),
                 )
             )
-
-        self._pool.submit(fn, *args, **kwargs).add_done_callback(_)
+        )
         self._in_flight += 1
 
     def wait_for_value(self) -> CQE[Any]:
