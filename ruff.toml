@@ -2,16 +2,17 @@ line-length = 100
 
 [lint]
 ignore = [
+    "A002",
     "ANN401",
     "ARG002",
     "BLE001",
     "C901",
+    "COM812",
     "D",
     "INP001",
     "PLR0912",
     "S101",
     "S311",
-    "COM812",
 ]
 select = ["ALL"]
 
