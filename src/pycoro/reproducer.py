@@ -1,35 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator
+    from collections.abc import Generator
 
-
-@dataclass(frozen=True)
-class Run:
-    id: str
-    fn: Callable[..., Any]
-    args: tuple[Any, ...]
-    kwargs: dict[str, Any]
-
-
-type Yieldable = Run
-
-
-@dataclass(frozen=True)
-class P: ...
-
-
-type Sendable[T] = P[T] | T | Exception
+    from pycoro.commands import Sendable, Yieldable
 
 
 class GenIterator:
     def __init__(self) -> None:
-        self._cache: dict[str, Sendable] = {}
+        self._cache: dict[str, Sendable[Any]] = {}
 
-    def add_to_cache(self, id: str, s: Sendable) -> None:
+    def add_to_cache(self, id: str, s: Sendable[Any]) -> None:
         assert id not in self._cache
         self._cache[id] = s
 

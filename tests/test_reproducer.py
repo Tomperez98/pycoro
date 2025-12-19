@@ -4,7 +4,8 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from pycoro.reproducer import GenIterator, Run, Sendable, Yieldable
+from pycoro.commands import Run, Sendable, Yieldable
+from pycoro.reproducer import GenIterator
 
 if TYPE_CHECKING:
     from collections.abc import Generator
