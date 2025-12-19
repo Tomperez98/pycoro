@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 from typing import Any
 
-from pycoro import CQE, Processor
+from pycoro.processor import CQE, Processor
 
 
 def test_processor() -> None:
