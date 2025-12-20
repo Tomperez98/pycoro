@@ -23,7 +23,13 @@ class Run:
             msg = "options can be set at most once."
             raise UserError(msg)
 
-        return Run(fn=self.fn, args=self.args, kwargs=self.kwargs, id=id, options_set=True)
+        return Run(
+            fn=self.fn,
+            args=self.args,
+            kwargs=self.kwargs,
+            id=id,
+            options_set=not self.options_set,
+        )
 
 
 type Yieldable = Run
