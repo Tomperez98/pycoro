@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import queue
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -31,11 +32,48 @@ class SQE[T]:
     kwargs: dict[str, Any]
 
 
-class Processor:
+class Processor(Protocol):
+    def submit[**P](
+        self, id: str, fn: Callable[P, Any], *args: P.args, **kwargs: P.kwargs
+    ) -> None: ...
+    def flush(self) -> None: ...
+    def results(self) -> list[CQE[Any]]: ...
+    def start(self) -> None: ...
+    def stop(self) -> None: ...
+
+
+class SyncProcessor:
+    def __init__(self) -> None:
+        self._cq: list[CQE[Any]] = []
+        self._sq: list[SQE[Any]] = []
+
+    def submit[**P](self, id: str, fn: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> None:
+        self._sq.append(SQE(id=id, fn=fn, args=args, kwargs=kwargs))
+
+    def flush(self) -> None:
+        assert len(self._cq) == 0, "pending elements on cq"
+        for sqe in self._sq:
+            self._cq.append(_run_sqe(sqe))
+
+        self._sq.clear()
+
+    def results(self) -> list[CQE[Any]]:
+        results = self._cq
+        self._cq = []
+        return results
+
+    def start(self) -> None:
+        return
+
+    def stop(self) -> None:
+        return
+
+
+class AsyncProcessor:
     def __init__(self, max_workers: int | None = None) -> None:
         self._max_workers: int | None = max_workers
         self._pool: ThreadPoolExecutor | None = None
-        self._cq: list[CQE[Any]] | None = None
+        self._cq: queue.SimpleQueue[CQE[Any]] = queue.SimpleQueue()
         self._sq: list[SQE[Any]] = []
 
     def submit[**P](self, id: str, fn: Callable[P, Any], *args: P.args, **kwargs: P.kwargs) -> None:
@@ -43,13 +81,20 @@ class Processor:
 
     def flush(self) -> None:
         assert self._pool is not None, "processor was never started"
-        self._cq = list(self._pool.map(_run_sqe, self._sq))
+        for sqe in self._sq:
+            self._pool.submit(_run_sqe, sqe).add_done_callback(lambda f: self._cq.put(f.result()))
         self._sq.clear()
 
     def results(self) -> list[CQE[Any]]:
         assert self._cq is not None
-        results = self._cq
-        self._cq = []
+        results = []
+
+        while True:
+            try:
+                results.append(self._cq.get_nowait())
+            except queue.Empty:
+                break
+
         return results
 
     def start(self) -> None:
